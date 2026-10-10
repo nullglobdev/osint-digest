@@ -19,14 +19,15 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QFrame, QLabe
     QAbstractItemView, QListWidget, QListWidgetItem, QMessageBox, QFileDialog, QDialog,
     QDialogButtonBox, QSizePolicy)
 
-from bot import error_label
-from desktop_ai import PROVIDERS, KEY_ENV, PORTALS, list_models
-from desktop_settings import (APP_NAME, VERSION, DEFAULTS, initialize, load_settings, save_settings,
+from osint_digest.core.collector import error_label
+from osint_digest.core.providers import PROVIDERS, KEY_ENV, PORTALS, list_models
+from osint_digest.desktop.settings import (APP_NAME, VERSION, DEFAULTS, initialize, load_settings, save_settings,
                               atomic_json, resource_path)
-from desktop_sources import make_source
-from desktop_theme import (THEMES, FlowLayout, high_contrast_enabled, windows_palette,
+from osint_digest.core.sources import make_source
+from osint_digest.desktop.theme import (THEMES, FlowLayout, high_contrast_enabled, windows_palette,
                            palette_for, stylesheet)
-from desktop_tray import Tray
+from osint_digest.desktop.tray import Tray
+from osint_digest.paths import PROJECT_ROOT
 
 TITLES = {'feeds': 'Checking publisher feeds', 'ai': 'Testing AI on a real article',
           'preview': 'Preparing batch preview', 'batch': 'Sending latest articles to Discord',
@@ -757,7 +758,7 @@ class DigestApp(QMainWindow):
             return False
         try:
             (self.root / 'activity.log').write_text('', encoding='utf-8')
-            command = [sys.executable] if getattr(sys, 'frozen', False) else [sys.executable, str(Path(__file__).with_name('desktop.py'))]
+            command = [sys.executable] if getattr(sys, 'frozen', False) else [sys.executable, str(PROJECT_ROOT / 'desktop.py')]
             command += ['--data-dir', str(self.root), '--worker', action]
             self.process = subprocess.Popen(command, cwd=str(self.root), env=os.environ.copy(),
                                              creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)

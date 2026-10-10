@@ -15,12 +15,13 @@ import time
 import unittest
 from unittest.mock import Mock, patch
 
-import bot
-import desktop_ai
-import server
-import server_setup
-import server_settings as settings
-from ai_endpoints import ollama_base_url
+from osint_digest.core import collector as bot
+from osint_digest.core import providers as desktop_ai
+from osint_digest.server import app as server
+from osint_digest.server import setup as server_setup
+from osint_digest.server import settings as settings
+from osint_digest.core.endpoints import ollama_base_url
+from osint_digest.paths import PROJECT_ROOT
 
 WEBHOOK = 'https://discord.com/api/webhooks/123/test-token'
 SOURCE = {'name': 'Test', 'feed': 'https://publisher.example/feed',
@@ -53,6 +54,22 @@ class ServerTests(unittest.TestCase):
                 self.assertEqual(os.environ['DISCORD_WEBHOOK_URL'], '')
                 self.assertNotIn('GEMINI_API_KEY', os.environ)
             self.assertEqual(os.environ['GEMINI_API_KEY'], 'shell-key')
+
+    def test_existing_server_volume_keeps_its_config_and_history(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = {**deepcopy(settings.DEFAULTS), 'webhook': WEBHOOK,
+                      'max_posts': 10, 'sources': [SOURCE]}
+            # Existing deployments use this literal filename, independent of module names.
+            original = json.dumps(config).encode()
+            (root / 'server.json').write_bytes(original)
+            bot.save_state(root / 'state/state.json', {'seen': {'old': 'sent'}, 'pending': {}, 'feeds': {}})
+            history = (root / 'state/state.json').read_bytes()
+            settings.initialize(root)
+            loaded, _ = settings.load_config(root)
+            self.assertEqual(loaded, config)
+            self.assertEqual((root / 'server.json').read_bytes(), original)
+            self.assertEqual((root / 'state/state.json').read_bytes(), history)
 
     def test_config_rejects_stale_session_and_preserves_valid_file(self):
         original, revision = settings.load_config(self.root)
@@ -199,7 +216,7 @@ class ServerTests(unittest.TestCase):
         response = Mock(status=200)
         response.__enter__ = Mock(return_value=response)
         response.__exit__ = Mock(return_value=False)
-        with patch('server.urllib.request.build_opener') as opener, redirect_stdout(io.StringIO()):
+        with patch('osint_digest.server.app.urllib.request.build_opener') as opener, redirect_stdout(io.StringIO()):
             opener.return_value.open.return_value = response
             self.assertEqual(server.run_action(self.root, 'test-discord'), 0)
             request = opener.return_value.open.call_args.args[0]
@@ -221,7 +238,7 @@ class ServerTests(unittest.TestCase):
     def test_terminal_wizard_preserves_secrets_and_can_pause(self):
         self.configure(webhook=WEBHOOK, enabled=True)
         # Keep webhook, choose excerpts, 10 articles, 360 minutes, pause, skip sources.
-        with patch('server_setup.getpass.getpass', return_value=''), patch('builtins.input', side_effect=['5', '10', '360', 'n', 'n']), redirect_stdout(io.StringIO()):
+        with patch('osint_digest.server.setup.getpass.getpass', return_value=''), patch('builtins.input', side_effect=['5', '10', '360', 'n', 'n']), redirect_stdout(io.StringIO()):
             server_setup.edit(self.root, 'setup')
         config, _ = settings.load_config(self.root)
         self.assertEqual(config['webhook'], WEBHOOK)
@@ -241,13 +258,13 @@ class ServerTests(unittest.TestCase):
 
     def test_model_menu_uses_selected_provider_key_and_endpoint(self):
         config = self.configure(provider='ollama')
-        with patch('builtins.input', side_effect=['y', '1']), patch('server_setup.list_models', return_value=['local:8b']) as models, redirect_stdout(io.StringIO()):
+        with patch('builtins.input', side_effect=['y', '1']), patch('osint_digest.server.setup.list_models', return_value=['local:8b']) as models, redirect_stdout(io.StringIO()):
             server_setup.choose_model(config)
         self.assertEqual(models.call_args.args, ('ollama', '', config['ollama_url']))
         self.assertEqual(config['profiles']['ollama']['model'], 'local:8b')
 
     def test_noninteractive_setup_exits_without_reading_or_echoing_password(self):
-        result = subprocess.run([sys.executable, str(Path(server.__file__).resolve()), '--data-dir', str(self.root), 'setup'],
+        result = subprocess.run([sys.executable, str(PROJECT_ROOT / 'server.py'), '--data-dir', str(self.root), 'setup'],
                                  input='do-not-echo-this\n', text=True, capture_output=True, timeout=10)
         self.assertEqual(result.returncode, 2)
         self.assertIn('interactive terminal', result.stderr)

@@ -8,8 +8,8 @@ import time
 import unittest
 from unittest.mock import Mock, patch
 
-import desktop_settings as settings
-from desktop_sources import make_source
+from osint_digest.desktop import settings as settings
+from osint_digest.core.sources import make_source
 
 HAS_GUI = find_spec('PySide6') is not None
 if HAS_GUI:
@@ -18,8 +18,8 @@ if HAS_GUI:
     from PySide6.QtGui import QAccessible, QFont, QFontDatabase, QPalette
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QLineEdit
-    from desktop_ui import DigestApp
-    from desktop_theme import THEMES, contrast
+    from osint_digest.desktop.ui import DigestApp
+    from osint_digest.desktop.theme import THEMES, contrast
 
 _QAPP = None
 
@@ -102,7 +102,7 @@ class GuiTests(unittest.TestCase):
         app.webhook_entry.setText('https://discord.com/api/webhooks/123/fake')
         process = Mock()
         process.poll.return_value = None
-        with patch('desktop_ui.subprocess.Popen', return_value=process) as launch:
+        with patch('osint_digest.desktop.ui.subprocess.Popen', return_value=process) as launch:
             app.toggle_monitor()
             self.assertTrue(app.monitoring)
             button = QAccessible.queryAccessibleInterface(app.auto_button)
@@ -120,7 +120,7 @@ class GuiTests(unittest.TestCase):
             self.assertEqual(button.text(QAccessible.Text.Name), 'Start automatic checks')
 
     def test_missing_connection_focuses_field_and_does_not_start_worker(self):
-        with patch('desktop_ui.subprocess.Popen') as launch:
+        with patch('osint_digest.desktop.ui.subprocess.Popen') as launch:
             self.assertFalse(self.app.start('batch'))
         launch.assert_not_called()
         self.assertEqual(self.app.tabs.currentIndex(), 1)
@@ -130,7 +130,7 @@ class GuiTests(unittest.TestCase):
     def test_tray_close_preserves_checks_and_restore(self):
         app = self.app
         app.monitoring = True
-        with patch('desktop_ui.Tray') as tray:
+        with patch('osint_digest.desktop.ui.Tray') as tray:
             tray.return_value.start.return_value = True
             app.close()
             self.assertFalse(app.isVisible())
@@ -140,7 +140,7 @@ class GuiTests(unittest.TestCase):
             self.assertTrue(app.monitoring)
 
     def test_tray_unavailable_keeps_taskbar_window(self):
-        with patch('desktop_ui.Tray') as tray:
+        with patch('osint_digest.desktop.ui.Tray') as tray:
             tray.return_value.start.return_value = False
             self.app.hide_to_tray()
         self.assertTrue(self.app.isMinimized())
@@ -223,7 +223,7 @@ class GuiTests(unittest.TestCase):
         self.assertTrue(viewport.rect().contains(center), 'Focused field must scroll into view')
 
     def test_windows_contrast_theme_overrides_custom_styles(self):
-        with patch('desktop_ui.high_contrast_enabled', return_value=True):
+        with patch('osint_digest.desktop.ui.high_contrast_enabled', return_value=True):
             self.app.apply_appearance()
             self.assertTrue(self.app.high_contrast)
             self.assertEqual(_QAPP.styleSheet(), '')
@@ -238,7 +238,7 @@ class GuiTests(unittest.TestCase):
         app.pause_log.setChecked(True)
         app.read_log()
         self.assertEqual(app.activity.toPlainText(), 'Review this text')
-        with patch('desktop_ui.subprocess.Popen', return_value=Mock()):
+        with patch('osint_digest.desktop.ui.subprocess.Popen', return_value=Mock()):
             self.assertTrue(app.start('feeds'))
         self.assertEqual(app.activity.toPlainText(), 'Review this text')
         (app.root / 'activity.log').write_text('New result')

@@ -6,9 +6,9 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-import desktop_ai as ai
-import desktop_settings as settings
-from desktop_sources import make_source
+from osint_digest.core import providers as ai
+from osint_digest.desktop import settings as settings
+from osint_digest.core.sources import make_source
 
 
 class ModelTests(unittest.TestCase):
@@ -77,7 +77,7 @@ class SourceTests(unittest.TestCase):
 @unittest.skipUnless(os.name == 'nt', 'Desktop targets Windows')
 class SettingsTests(unittest.TestCase):
     def test_desktop_openai_and_claude_generate_grounded_summaries(self):
-        import bot
+        from osint_digest.core import collector as bot
         article = 'The vendor recommends installing the security update immediately.'
         raw = json.dumps({'summary': [{'text': 'Install the update.', 'evidence': article}]})
         for provider, response, endpoint, auth in (

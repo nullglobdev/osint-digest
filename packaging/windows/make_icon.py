@@ -33,6 +33,6 @@ for y in range(size):
 png = b'\x89PNG\r\n\x1a\n'
 png += chunk(b'IHDR', struct.pack('>IIBBBBB', size, size, 8, 6, 0, 0, 0))
 png += chunk(b'IDAT', zlib.compress(b''.join(rows), 9)) + chunk(b'IEND', b'')
-target = Path(__file__).resolve().parent.parent / 'assets'
+target = Path(__file__).resolve().parents[2] / 'assets'
 target.mkdir(exist_ok=True)
 (target / 'app.ico').write_bytes(struct.pack('<HHH', 0, 1, 1) + struct.pack('<BBBBHHII', 0, 0, 0, 0, 1, 32, len(png), 22) + png)

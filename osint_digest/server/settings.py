@@ -9,9 +9,10 @@ import re
 import tempfile
 from urllib.parse import urlsplit
 
-from ai_endpoints import ollama_base_url
-from desktop_ai import PROVIDERS, KEY_ENV
-from desktop_sources import make_source
+from osint_digest.core.endpoints import ollama_base_url
+from osint_digest.core.providers import PROVIDERS, KEY_ENV
+from osint_digest.core.sources import make_source
+from osint_digest.paths import resource_path
 
 DEFAULTS = {'schema_version': 1, 'provider': 'none', 'profiles': {}, 'webhook': '',
             'max_posts': 5, 'interval_minutes': 60, 'enabled': False,
@@ -81,7 +82,7 @@ def initialize(root):
     with file_lock(root / '.config.lock'):
         if not (root / 'server.json').exists():
             config = deepcopy(DEFAULTS)
-            config['sources'] = json.loads(Path(__file__).with_name('sources.json').read_text(encoding='utf-8'))
+            config['sources'] = json.loads(resource_path('config/sources.json').read_text(encoding='utf-8'))
             atomic_json(root / 'server.json', config)
 
 

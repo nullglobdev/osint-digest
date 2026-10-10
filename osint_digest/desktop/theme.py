@@ -5,7 +5,7 @@ import os
 from PySide6.QtCore import Qt, QRect, QSize
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QLayout
-from desktop_settings import resource_path
+from osint_digest.desktop.settings import resource_path
 
 THEMES = {
     'dark': {'background': '#071321', 'card': '#101f35', 'panel': '#142942',

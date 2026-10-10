@@ -10,7 +10,8 @@ import re
 import sys
 from urllib.parse import urlsplit
 
-from desktop_ai import PROVIDERS, KEY_ENV
+from osint_digest.core.providers import PROVIDERS, KEY_ENV
+from osint_digest.paths import resource_path
 
 APP_NAME = 'OSINT Digest'
 VERSION = '1.2.0'
@@ -18,10 +19,6 @@ DEFAULTS = {'provider': 'gemini', 'model': 'gemini-3.1-flash-lite',
             'webhook': '', 'api_key': '', 'batch_size': 5, 'interval_minutes': 60,
             'close_to_tray': True, 'profiles': {}, 'theme': 'dark', 'text_scale': 100}
 SECRET_KEYS = ('webhook', 'api_key')
-
-
-def resource_path(name):
-    return Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent)) / name
 
 
 def data_directory():
@@ -32,7 +29,7 @@ def initialize(root):
     root.mkdir(parents=True, exist_ok=True)
     sources = root / 'sources.json'
     if not sources.exists():
-        sources.write_bytes(resource_path('sources.json').read_bytes())
+        sources.write_bytes(resource_path('config/sources.json').read_bytes())
     (root / 'preview').mkdir(exist_ok=True)
 
 

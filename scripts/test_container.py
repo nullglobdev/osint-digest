@@ -40,13 +40,15 @@ def main():
         docker('exec', '-i', name, 'python', '-', script='''
 from pathlib import Path
 import importlib.util, os, stat
-from server_settings import load_config, save_config
+from osint_digest.server.settings import load_config, save_config
 root = Path('/data')
 assert os.getuid() == 10001
 assert stat.S_IMODE((root / 'server.json').stat().st_mode) == 0o600
 assert not Path('/app/.env').exists()
 assert importlib.util.find_spec('PySide6') is None
 assert not Path('/app/settings.json').exists()
+assert not Path('/app/osint_digest/desktop').exists()
+assert not list(Path('/app').rglob('*.pyc'))
 config, revision = load_config(root)
 assert not config['enabled'] and not config['webhook']
 config['max_posts'], config['interval_minutes'] = 10, 360
@@ -70,8 +72,9 @@ import io, json, threading
 from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
-import bot, server
-from server_settings import load_config, save_config
+from osint_digest.core import collector as bot
+from osint_digest.server import app as server
+from osint_digest.server.settings import load_config, save_config
 root = Path('/data')
 config, revision = load_config(root)
 config['webhook'] = 'https://discord.com/api/webhooks/123/offline-test'
@@ -101,7 +104,7 @@ save_config(root, config, revision)
         docker('exec', '-i', name, 'python', '-', script='''
 import json
 from pathlib import Path
-from server_settings import load_config
+from osint_digest.server.settings import load_config
 root = Path('/data')
 config, _ = load_config(root)
 assert config['max_posts'] == 10 and config['interval_minutes'] == 360

@@ -3,10 +3,10 @@ from copy import deepcopy
 import getpass
 import warnings
 
-from bot import error_label
-from desktop_ai import PROVIDERS, KEY_ENV, list_models
-from desktop_sources import make_source
-from server_settings import (BusyError, SettingsError, load_config, save_config, require_ready)
+from osint_digest.core.collector import error_label
+from osint_digest.core.providers import PROVIDERS, KEY_ENV, list_models
+from osint_digest.core.sources import make_source
+from osint_digest.server.settings import (BusyError, SettingsError, load_config, save_config, require_ready)
 
 
 def prompt(title, default=''):
@@ -165,7 +165,7 @@ def administer(root, command):
     if command != 'settings':
         edit(root, command)
         return
-    from server import run_action, show_status, backup
+    from osint_digest.server.app import run_action, show_status, backup
     while True:
         print('\nOSINT Digest settings\n1 Connection and AI\n2 Schedule and article limit\n3 Sources\n4 Models\n5 Show status\n6 Check feeds\n7 Test AI (local preview)\n8 Preview latest batch\n9 Send latest batch to Discord (can repeat posts)\n10 Check and send new\n11 Check Discord connection (no message)\n12 Back up settings and history\n0 Exit')
         choice = prompt('Choice', '0')

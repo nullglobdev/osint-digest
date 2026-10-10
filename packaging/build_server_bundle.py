@@ -1,4 +1,5 @@
 """Build a portable headless source bundle from an explicit public-file allowlist."""
+import argparse
 import gzip
 import hashlib
 import io
@@ -6,23 +7,32 @@ from pathlib import Path
 import tarfile
 
 VERSION = '1.0.0'
-FILES = ('Dockerfile', '.dockerignore', 'compose.yaml', 'bot.py', 'ai_endpoints.py',
-         'desktop_ai.py', 'desktop_sources.py', 'server.py', 'server_settings.py',
-         'server_setup.py', 'sources.json', 'CONTAINER.md', 'VALIDATION.md',
-         'scripts/server.sh', 'scripts/test_container.py', 'test_bot.py', 'test_server.py')
+FILES = ('Dockerfile', '.dockerignore', 'compose.yaml', 'bot.py', 'server.py',
+         'osint_digest/__init__.py', 'osint_digest/paths.py',
+         'osint_digest/core/__init__.py', 'osint_digest/core/collector.py',
+         'osint_digest/core/endpoints.py', 'osint_digest/core/providers.py', 'osint_digest/core/sources.py',
+         'osint_digest/server/__init__.py', 'osint_digest/server/app.py',
+         'osint_digest/server/settings.py', 'osint_digest/server/setup.py',
+         'config/sources.json', 'docs/CONTAINER.md', 'docs/VALIDATION.md',
+         'scripts/server.sh', 'scripts/test_container.py', 'tests/__init__.py',
+         'tests/test_bot.py', 'tests/test_server.py')
 
 
 def main():
     root = Path(__file__).resolve().parent.parent
-    output = root / 'dist'
-    output.mkdir(exist_ok=True)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--output-dir', type=Path, default=root / 'dist')
+    output = parser.parse_args().output_dir.resolve()
+    output.mkdir(parents=True, exist_ok=True)
     prefix = f'OSINTDigest-Server-{VERSION}'
     path = output / (prefix + '.tar.gz')
     with path.open('wb') as stream, gzip.GzipFile(fileobj=stream, filename='', mode='wb', mtime=0) as compressed:
         with tarfile.open(fileobj=compressed, mode='w') as archive:
             for name in (*FILES, 'README.md'):
-                source = 'CONTAINER.md' if name == 'README.md' else name
+                source = 'docs/CONTAINER.md' if name == 'README.md' else name
                 data = (root / source).read_bytes().replace(b'\r\n', b'\n')
+                if name == 'README.md':
+                    data = data.replace(b'](VALIDATION.md)', b'](docs/VALIDATION.md)')
                 info = tarfile.TarInfo(prefix + '/' + name)
                 info.size = len(data)
                 info.mode = 0o755 if name.endswith('.sh') else 0o644

@@ -17,5 +17,6 @@ settings.json
 *.log
 server-data/
 .server-test/
+.work/
 server.json
 osint-digest-*.tar.gz

@@ -7,8 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-import bot
-
+from osint_digest.core import collector as bot
 SOURCE = {'name': 'Test', 'hosts': ['publisher.example'], 'feed': 'https://publisher.example/feed'}
 
 
@@ -18,6 +17,16 @@ def feed(*names):
 
 
 class Tests(unittest.TestCase):
+    def test_repository_sources_are_loaded_from_config_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'config').mkdir()
+            (root / 'config/sources.json').write_text(json.dumps([SOURCE]))
+            args = type('Args', (), {'test_ai': None, 'check_feeds': True})()
+            with patch.object(bot, 'ROOT', root), patch.object(bot, 'fetch', return_value=(200, feed('one'), {}, '')) as fetch, contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(bot.run(args), 0)
+                self.assertEqual(fetch.call_args.args, (SOURCE['feed'], SOURCE['hosts']))
+
     def test_baseline_dedup_and_backlog(self):
         state = {'feeds': {}, 'seen': {}, 'pending': {}}
         def get(raw):
@@ -70,7 +79,7 @@ class Tests(unittest.TestCase):
         self.assertNotIn('Unrelated', text)
 
     def test_ai_failure_falls_back(self):
-        with patch.dict(os.environ, {'AI_PROVIDER':'gemini', 'GEMINI_API_KEY':'fake'}), patch('bot.api_json', side_effect=TimeoutError):
+        with patch.dict(os.environ, {'AI_PROVIDER':'gemini', 'GEMINI_API_KEY':'fake'}), patch('osint_digest.core.collector.api_json', side_effect=TimeoutError):
             result, status = bot.summarize('article')
         self.assertIsNone(result)
         self.assertIn('TimeoutError', status)
@@ -86,12 +95,12 @@ class Tests(unittest.TestCase):
                            'seen': {'https://publisher.example/old': {'status': 'sent'}}, 'pending': {}})
             original = (root / 'state/state.json').read_bytes()
             args = type('Args', (), {'test_ai': 'Test'})()
-            with patch('bot.ROOT', root), patch.dict(os.environ, {'AI_PROVIDER': 'gemini', 'AI_MODEL': '', 'GEMINI_API_KEY': 'fake'}), patch('bot.fetch', side_effect=[
+            with patch('osint_digest.core.collector.ROOT', root), patch.dict(os.environ, {'AI_PROVIDER': 'gemini', 'AI_MODEL': '', 'GEMINI_API_KEY': 'fake'}), patch('osint_digest.core.collector.fetch', side_effect=[
                 (200, feed('old'), {}, ''),
                 (200, ('<article>' + article + '</article>').encode(), {'Content-Type': 'text/html'}, '')
-            ]), patch('bot.robots_allowed', return_value=True), patch('bot.api_json', return_value={
+            ]), patch('osint_digest.core.collector.robots_allowed', return_value=True), patch('osint_digest.core.collector.api_json', return_value={
                 'candidates': [{'content': {'parts': [{'text': ai_response}]}}]
-            }) as api, patch('bot.send_discord') as send, patch('bot.discover') as discover, contextlib.redirect_stdout(io.StringIO()):
+            }) as api, patch('osint_digest.core.collector.send_discord') as send, patch('osint_digest.core.collector.discover') as discover, contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(bot.run(args), 0)
                 api.assert_called_once()
                 self.assertIn('gemini-3.1-flash-lite', api.call_args.args[0])
@@ -104,30 +113,30 @@ class Tests(unittest.TestCase):
 
     def test_ai_test_reports_fallback_as_failure_and_redacts_errors(self):
         error = bot.urllib.error.HTTPError('https://example.test/secret', 429, 'private API key', {}, None)
-        with patch.dict(os.environ, {'AI_PROVIDER': 'gemini', 'GEMINI_API_KEY': 'fake'}), patch('bot.api_json', side_effect=error):
+        with patch.dict(os.environ, {'AI_PROVIDER': 'gemini', 'GEMINI_API_KEY': 'fake'}), patch('osint_digest.core.collector.api_json', side_effect=error):
             summary, status = bot.summarize('article')
         self.assertIsNone(summary)
         self.assertIn('HTTP 429', status)
         self.assertNotIn('secret', status)
         self.assertNotIn('private', status)
         with tempfile.TemporaryDirectory() as tmp:
-            with patch('bot.ROOT', Path(tmp)), patch.dict(os.environ, {'AI_PROVIDER': 'gemini'}), patch('bot.fetch', return_value=(200, feed('old'), {}, '')), patch('bot.article_report', return_value={
+            with patch('osint_digest.core.collector.ROOT', Path(tmp)), patch.dict(os.environ, {'AI_PROVIDER': 'gemini'}), patch('osint_digest.core.collector.fetch', return_value=(200, feed('old'), {}, '')), patch('osint_digest.core.collector.article_report', return_value={
                 'title': 'Test', 'url': 'https://publisher.example/old', 'analysis': None, 'ai_status': status
-            }), patch('bot.send_discord') as send, contextlib.redirect_stdout(io.StringIO()) as output:
+            }), patch('osint_digest.core.collector.send_discord') as send, contextlib.redirect_stdout(io.StringIO()) as output:
                 self.assertEqual(bot.test_ai([SOURCE], 'Test'), 1)
                 self.assertIn('AI TEST FAILED', output.getvalue())
                 send.assert_not_called()
 
     def test_ai_test_rejects_missing_provider_or_unknown_source_before_network(self):
-        with patch.dict(os.environ, {'AI_PROVIDER': ''}), patch('bot.fetch') as fetch, contextlib.redirect_stdout(io.StringIO()):
+        with patch.dict(os.environ, {'AI_PROVIDER': ''}), patch('osint_digest.core.collector.fetch') as fetch, contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(bot.test_ai([SOURCE], '*'), 1)
             fetch.assert_not_called()
-        with patch.dict(os.environ, {'AI_PROVIDER': 'gemini'}), patch('bot.fetch') as fetch, contextlib.redirect_stdout(io.StringIO()):
+        with patch.dict(os.environ, {'AI_PROVIDER': 'gemini'}), patch('osint_digest.core.collector.fetch') as fetch, contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(bot.test_ai([SOURCE], 'Unknown'), 1)
             fetch.assert_not_called()
 
     def test_paid_ai_is_opt_in(self):
-        with patch.dict(os.environ, {'AI_PROVIDER':'openai', 'ALLOW_PAID_AI':'false'}), patch('bot.api_json') as api:
+        with patch.dict(os.environ, {'AI_PROVIDER':'openai', 'ALLOW_PAID_AI':'false'}), patch('osint_digest.core.collector.api_json') as api:
             result, _ = bot.summarize('article')
         self.assertIsNone(result)
         api.assert_not_called()
@@ -159,7 +168,7 @@ class Tests(unittest.TestCase):
                     if fail_first and calls == 1:
                         raise TimeoutError
                     return str(calls)
-                with patch('bot.ROOT', root), patch.dict(os.environ, {'DISCORD_WEBHOOK_URL': 'fake', 'AI_PROVIDER': 'none'}), patch('bot.fetch', side_effect=get_feed) as fetch, patch('bot.article_report', side_effect=report) as process, patch('bot.send_discord', side_effect=send_report) as send, patch('bot.discover') as discover, contextlib.redirect_stdout(io.StringIO()):
+                with patch('osint_digest.core.collector.ROOT', root), patch.dict(os.environ, {'DISCORD_WEBHOOK_URL': 'fake', 'AI_PROVIDER': 'none'}), patch('osint_digest.core.collector.fetch', side_effect=get_feed) as fetch, patch('osint_digest.core.collector.article_report', side_effect=report) as process, patch('osint_digest.core.collector.send_discord', side_effect=send_report) as send, patch('osint_digest.core.collector.discover') as discover, contextlib.redirect_stdout(io.StringIO()):
                     self.assertEqual(bot.run(args), int(fail_first))
                     self.assertEqual(fetch.call_count, count)
                     self.assertEqual(process.call_count, count)
@@ -186,7 +195,7 @@ class Tests(unittest.TestCase):
             root = Path(tmp)
             (root / 'sources.json').write_text(json.dumps([SOURCE]))
             args = type('Args', (), dict(test_ai=None, check_feeds=False, dry_run=True, batch=5))()
-            with patch('bot.ROOT', root), patch('bot.fetch') as fetch, contextlib.redirect_stdout(io.StringIO()):
+            with patch('osint_digest.core.collector.ROOT', root), patch('osint_digest.core.collector.fetch') as fetch, contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(bot.run(args), 1)
                 fetch.assert_not_called()
             self.assertFalse((root / 'state/state.json').exists())
@@ -198,7 +207,7 @@ class Tests(unittest.TestCase):
             def run(args):
                 print('POSTED: \u2192 \U0001f512')
                 return 0
-            with patch('bot.ROOT', Path(tmp)), patch('bot.load_env'), patch('bot.sys.argv', ['bot.py']), patch('bot.sys.stdout', output), patch('bot.run', side_effect=run):
+            with patch('osint_digest.core.collector.ROOT', Path(tmp)), patch('osint_digest.core.collector.load_env'), patch('osint_digest.core.collector.sys.argv', ['bot.py']), patch('osint_digest.core.collector.sys.stdout', output), patch('osint_digest.core.collector.run', side_effect=run):
                 self.assertEqual(bot.main(), 0)
                 output.flush()
                 self.assertIn(b'POSTED:', output_bytes.getvalue())
@@ -255,7 +264,7 @@ class Tests(unittest.TestCase):
                 'https://publisher.example/a': {'url':'https://publisher.example/a','source':'Test','title':'A','published':'now','discovered':'now'}}}
             bot.save_state(root/'state/state.json', state)
             args = type('Args', (), dict(check_feeds=False,dry_run=False,backfill=0,max_posts=5))()
-            with patch('bot.ROOT',root), patch.dict(os.environ, {'DISCORD_WEBHOOK_URL':'fake','AI_PROVIDER':'none'}), patch('bot.discover',return_value=0), patch('bot.robots_allowed',return_value=True), patch('bot.fetch',return_value=(200,b'<article>'+b'Hello world. '*50+b'</article>',{'Content-Type':'text/html'},'')), patch('bot.send_discord',side_effect=TimeoutError):
+            with patch('osint_digest.core.collector.ROOT',root), patch.dict(os.environ, {'DISCORD_WEBHOOK_URL':'fake','AI_PROVIDER':'none'}), patch('osint_digest.core.collector.discover',return_value=0), patch('osint_digest.core.collector.robots_allowed',return_value=True), patch('osint_digest.core.collector.fetch',return_value=(200,b'<article>'+b'Hello world. '*50+b'</article>',{'Content-Type':'text/html'},'')), patch('osint_digest.core.collector.send_discord',side_effect=TimeoutError):
                 self.assertEqual(bot.run(args),1)
             after = json.loads((root/'state/state.json').read_text())
             self.assertFalse(after['seen'])
@@ -292,7 +301,7 @@ class Tests(unittest.TestCase):
         total = len(embed['title']) + len(embed['author']['name']) + len(embed['footer']['text'])
         total += sum(len(k) + len(v) for k, v in fields.items())
         self.assertLessEqual(total, 6000)
-        with patch.dict(os.environ, {'DISCORD_WEBHOOK_URL': 'https://discord.com/api/webhooks/123/fake'}), patch('bot.urllib.request.urlopen', return_value=io.BytesIO(b'{"id":"123"}')) as send:
+        with patch.dict(os.environ, {'DISCORD_WEBHOOK_URL': 'https://discord.com/api/webhooks/123/fake'}), patch('osint_digest.core.collector.urllib.request.urlopen', return_value=io.BytesIO(b'{"id":"123"}')) as send:
             self.assertEqual(bot.send_discord(report), '123')
         request = send.call_args.args[0]
         self.assertEqual(request.get_header('Content-type'), 'application/json')

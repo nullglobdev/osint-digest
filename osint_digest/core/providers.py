@@ -3,7 +3,7 @@ import json
 import re
 import urllib.request
 from urllib.parse import urlencode
-from ai_endpoints import ollama_base_url
+from osint_digest.core.endpoints import ollama_base_url
 
 PROVIDERS = {'Google Gemini': 'gemini', 'OpenAI': 'openai', 'Anthropic Claude': 'anthropic',
              'Local Ollama': 'ollama', 'Publisher excerpts (no AI)': 'none'}

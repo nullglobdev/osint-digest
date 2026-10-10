@@ -3,8 +3,8 @@ import os
 import sys
 import urllib.request
 
-import bot
-from desktop_settings import initialize, load_settings, apply_environment
+from osint_digest.core import collector as bot
+from osint_digest.desktop.settings import initialize, load_settings, apply_environment
 
 ACTIONS = ('feeds', 'ai', 'preview', 'batch', 'new', 'webhook')
 

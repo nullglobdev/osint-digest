@@ -7,10 +7,8 @@ import tempfile
 import unittest
 from unittest.mock import patch, Mock
 
-import desktop_settings as settings
-import desktop_worker as worker
-
-
+from osint_digest.desktop import settings as settings
+from osint_digest.desktop import worker as worker
 @unittest.skipUnless(os.name == 'nt', 'Desktop app targets Windows')
 class DesktopTests(unittest.TestCase):
     def test_settings_encrypt_secrets_and_roundtrip(self):

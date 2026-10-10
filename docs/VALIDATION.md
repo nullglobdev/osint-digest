@@ -2,6 +2,16 @@
 
 Desktop 1.2 was checked on October 9, 2026 (America/New_York). Earlier validation dates are retained below.
 
+## Repository organization update
+
+Checked October 10, 2026 (America/New_York).
+
+- Application code now lives in the `osint_digest` package with shared core, desktop, and server subpackages. Root launchers preserve the existing CLI commands. Guides, tests, sources, dependency lists, and Windows packaging files have their own folders.
+- The Windows suite collected 75 tests: 74 passed and the POSIX-permissions test was skipped. Regression coverage includes the new `config/sources.json` location and loading an existing server volume's original `server.json` and history without modification.
+- Source and newly packaged Windows executables passed native GUI/resource, encryption, tray, and accessibility-metadata startup checks. The packaged executable was tested from a separate working directory without Python-specific environment settings. The relocated Inno Setup definition compiled successfully into an isolated test installer.
+- The reorganized Docker image passed the offline container acceptance checks. The rebuilt/extracted server source bundle passed all 43 included core/server tests in Linux with networking disabled. The image excludes the desktop package and local Python bytecode caches.
+- Relative documentation links were checked. The publisher-source configuration and 21 existing local credential/state/preview files were verified unchanged. Existing published downloads were preserved; validation builds and historical local test artifacts are grouped under ignored `.work/` folders.
+
 ## Headless container edition
 
 Checked October 10, 2026 UTC using Linux containers on Docker Desktop (Engine 29.7.2, Compose 5.5.1) and the Python 3.12 slim Bookworm base image.
@@ -54,13 +64,13 @@ The records below describe earlier collector and 1.0 packaging validation.
 ## Observed limitations
 
 - Google’s feed was accessible, but its sampled article returned a short “Site Unavailable” page in this environment. Article processing rejected it and retained it for retry. Deployment from another host may differ.
-- CISA’s feed returned HTTP 403 and remains disabled in `sources.json`.
+- CISA’s feed returned HTTP 403 and remains disabled in `config/sources.json`.
 - Gemini has now been tested with user credentials as described above; other model adapters, Windows Task Scheduler and GitHub Actions execution remain untested here. Discord transport is covered by mocked tests; this AI test did not exercise live delivery.
 - Live article body extraction was sampled for Microsoft and Huntress, not validated across every publisher/layout. There is no measured IOC precision/recall benchmark.
 - AI evidence matching checks source substring presence, not logical entailment. Summaries require review.
 - The generic extractor does not cover images, PDFs or linked IOC files. See README for other coverage and delivery limitations.
 
-`feed-checks.json` preserves the direct feed probe results. An HTTP/feed success is not a promise that every article on that site can be retrieved.
+[validation/feed-checks.json](validation/feed-checks.json) preserves the direct feed probe results. An HTTP/feed success is not a promise that every article on that site can be retrieved.
 
 ## Windows desktop packaging
 

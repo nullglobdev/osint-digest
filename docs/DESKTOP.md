@@ -59,12 +59,12 @@ This build is not code signed. Windows may display an unknown-publisher or reput
 Build on Windows x64 with Python 3.12 and [Inno Setup 6](https://jrsoftware.org/isdl.php) installed. Check the compiler's license for your distribution/use. The build tools are not required on end users' PCs.
 
 ```powershell
-.\build_windows.ps1 -CompilerPath "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+.\scripts\build_windows.ps1 -CompilerPath "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
 ```
 
 The script creates `.build-venv`, installs the pinned build dependencies, runs the offline tests, generates the app icon, builds the PyInstaller app, compiles the installer, creates a portable ZIP, and writes `dist/SHA256SUMS.txt`.
 
-The unpacked app is `dist/1.2.0/OSINTDigest/OSINTDigest.exe`. Versioned build folders allow an older copy to stay open during a build. Close the older app before reviewing the new version with the same profile. To run from source, install `requirements-desktop.txt` and run `py -3 desktop.py`.
+The unpacked app is `dist/1.2.0/OSINTDigest/OSINTDigest.exe`. Versioned build folders allow an older copy to stay open during a build. Close the older app before reviewing the new version with the same profile. To run from source, install `requirements/desktop.txt` and run `py -3 desktop.py`.
 
 Distribution files:
 
@@ -72,7 +72,7 @@ Distribution files:
 - `dist/OSINTDigest-Portable-1.2.0-x64.zip`
 - `dist/SHA256SUMS.txt`
 
-`OSINTDigest.spec` uses an explicit resource allowlist. Do not add `.env`, app-data folders, `state`, `preview`, or credentials to it. For packaging validation, `OSINTDigest.exe --smoke-test --data-dir <temporary-folder>` initializes the GUI without showing its window, checks packaged resources, Windows encryption, the tray, and accessible field metadata, and writes `smoke-test.json`. It performs no network requests and sends no messages.
+`packaging/windows/OSINTDigest.spec` uses an explicit resource allowlist. Do not add `.env`, app-data folders, `state`, `preview`, or credentials to it. For packaging validation, `OSINTDigest.exe --smoke-test --data-dir <temporary-folder>` initializes the GUI without showing its window, checks packaged resources, Windows encryption, the tray, and accessible field metadata, and writes `smoke-test.json`. It performs no network requests and sends no messages.
 
 Implementation references: [PyInstaller bundling](https://pyinstaller.org/en/stable/usage.html), [Windows DPAPI](https://learn.microsoft.com/en-us/windows/win32/api/dpapi/nf-dpapi-cryptprotectdata), [Inno Setup](https://jrsoftware.org/isinfo.php).
 

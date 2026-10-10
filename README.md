@@ -2,9 +2,9 @@
 
 Download the Windows installer or portable ZIP from [GitHub Releases](https://github.com/ry304/osint-digest/releases/latest). This repository is private; downloads require access to the repository.
 
-**Windows desktop app:** a rounded navy workspace with Dark/Light/Windows themes, text scaling, and keyboard/accessibility features; graphical setup for Gemini, OpenAI, Claude, or Ollama; provider model discovery; editable RSS/Atom sources; AI previews; batch delivery; and automatic checks every 15–360 minutes with system-tray support. See [DESKTOP.md](DESKTOP.md) for installation and build instructions and [ACCESSIBILITY.md](ACCESSIBILITY.md) for accessibility features and validation status. The desktop installer bundles Python; the CLI instructions below remain supported.
+**Windows desktop app:** a rounded navy workspace with Dark/Light/Windows themes, text scaling, and keyboard/accessibility features; graphical setup for Gemini, OpenAI, Claude, or Ollama; provider model discovery; editable RSS/Atom sources; AI previews; batch delivery; and automatic checks every 15–360 minutes with system-tray support. See [DESKTOP.md](docs/DESKTOP.md) for installation and build instructions and [ACCESSIBILITY.md](docs/ACCESSIBILITY.md) for accessibility features and validation status. The desktop installer bundles Python; the CLI instructions below remain supported.
 
-**Server container:** run continuously without a GUI using Docker Compose, with interactive terminal setup/settings, provider model discovery, custom sources, persistent delivery history, and checks every 15–360 minutes. No Python installation or exposed ports are needed on the host. See [CONTAINER.md](CONTAINER.md).
+**Server container:** run continuously without a GUI using Docker Compose, with interactive terminal setup/settings, provider model discovery, custom sources, persistent delivery history, and checks every 15–360 minutes. No Python installation or exposed ports are needed on the host. See [CONTAINER.md](docs/CONTAINER.md).
 
 | Deployment | Setup and management | Runs while |
 |---|---|---|
@@ -22,6 +22,29 @@ sh scripts/server.sh settings
 ```
 
 The shared collector watches publisher RSS/Atom feeds and posts new articles to a Discord channel through a webhook. The original CLI needs Python 3.11+ and **no pip packages**. It does not read Discord messages or support slash commands.
+
+## Project layout
+
+```text
+osint_digest/       Application package
+  core/             Shared collector, AI providers, and source validation
+  desktop/          Windows UI, tray, settings, and worker
+  server/           Headless service and interactive administration
+config/             Default publisher sources (sources.json)
+docs/               Desktop, container, accessibility, and validation guides
+  validation/       Saved feed-check evidence
+tests/              Offline unit and UI tests
+scripts/            Windows build, server management, and container checks
+requirements/       Desktop and build dependency lists
+packaging/          Server bundle builder and third-party licenses
+  windows/          PyInstaller spec, installer, version info, and icon builder
+assets/             Application icons and theme artwork
+dist/               Generated installers, portable builds, and server bundles
+```
+
+The root `bot.py`, `desktop.py`, and `server.py` are small launchers, so existing run commands still work. `Dockerfile` and `compose.yaml` remain at the root for normal Docker commands. CLI credentials stay in your private `.env`; local `state/` and `preview/` remain in place. Desktop profiles and container volumes retain their existing locations. `.work/` holds ignored local validation artifacts, while `.build-venv/`, `.build-tools/`, and `build/` hold local build tooling/output.
+
+Run all tests from the repository root with `python -m unittest discover -s tests -v` (the shorter `python -m unittest -v` also works). Build Windows packages with `scripts/build_windows.ps1`; headless server commands remain in `scripts/server.sh`.
 
 ## Choose the cost model
 
@@ -68,7 +91,7 @@ The following feeds returned parseable entries during checks on October 9, 2026 
 
 CISA advisories are included **disabled** because the feed returned HTTP 403 in this environment. Do not treat that as an empty feed. Enable it only after a successful check from your host. Additional future candidates: CERT-EU, CERT/CC, The DFIR Report, Volexity, Elastic Security Labs, Red Canary, Rapid7 and Sophos X-Ops. Their adapters are not included or claimed tested.
 
-To change sources, edit `sources.json`. Set `enabled` to false to disable one. `hosts` must explicitly include every permitted feed, redirect and article hostname. Do not add arbitrary hosts from article content. Google’s FeedBurner address is linked from its official Threat Intelligence page.
+To change sources, edit `config/sources.json`. Set `enabled` to false to disable one. `hosts` must explicitly include every permitted feed, redirect and article hostname. Do not add arbitrary hosts from article content. Google’s FeedBurner address is linked from its official Threat Intelligence page.
 
 ## Start locally on Windows
 
@@ -120,7 +143,7 @@ py -3 bot.py --batch 5
 py -3 bot.py --batch 10
 ```
 
-Each command selects the first feed entry from each of the first N enabled sources in `sources.json`, runs article extraction and AI summarization, and sends one Discord message per article in a single run. Processing is sequential; you do not need to run a separate AI test first. Change the source order to choose which five are used. There are currently ten enabled sources, so `--batch 10` covers all of them. N controls the batch limit instead of `MAX_POSTS` or `--max-posts`.
+Each command selects the first feed entry from each of the first N enabled sources in `config/sources.json`, runs article extraction and AI summarization, and sends one Discord message per article in a single run. Processing is sequential; you do not need to run a separate AI test first. Change the source order to choose which five are used. There are currently ten enabled sources, so `--batch 10` covers all of them. N controls the batch limit instead of `MAX_POSTS` or `--max-posts`.
 
 **Batch mode deliberately includes previously sent articles and bypasses retry delays for the selected entries.** Repeating it may repeat Discord posts. It does not erase delivery history or process unrelated pending articles. Feed failures are reported, while article/delivery failures remain queued for a later normal run. Successful deliveries update state. If AI is unavailable, the normal excerpt fallback is posted and the terminal reports the AI status and final summary/excerpt counts; fewer than N messages may be delivered if retrieval or delivery fails.
 
@@ -154,7 +177,7 @@ After setting your provider and API key, run:
 py -3 bot.py --test-ai
 ```
 
-This retrieves the first article in the first enabled feed and runs the same extraction and AI analysis used for normal posts, even if the article was already sent. To choose a publisher, use `py -3 bot.py --test-ai Unit42` (names come from `sources.json`).
+This retrieves the first article in the first enabled feed and runs the same extraction and AI analysis used for normal posts, even if the article was already sent. To choose a publisher, use `py -3 bot.py --test-ai Unit42` (names come from `config/sources.json`).
 
 The command prints the AI status and summary, saves the report to `preview/ai-test.json`, and saves a readable summary with supporting evidence to `preview/ai-test.txt`. It calls your configured AI provider and uses its quota. It never sends a Discord message or changes delivery history or retry delays. An AI fallback counts as a failed test and returns a nonzero exit code. Each test replaces these two preview files.
 
@@ -169,7 +192,7 @@ AI_PROVIDER=ollama
 AI_MODEL=qwen3:8b
 ```
 
-Ollama defaults to `http://127.0.0.1:11434` for the CLI. Set `OLLAMA_BASE_URL` to use another operator-controlled endpoint. The container wizard stores its own reachable Ollama URL; see [container connectivity](CONTAINER.md#ollama-connectivity). Model files use several GB and larger contexts require additional RAM. This integration has not been tested here against a downloaded model. Do not run this mode on an ordinary ephemeral GitHub runner.
+Ollama defaults to `http://127.0.0.1:11434` for the CLI. Set `OLLAMA_BASE_URL` to use another operator-controlled endpoint. The container wizard stores its own reachable Ollama URL; see [container connectivity](docs/CONTAINER.md#ollama-connectivity). Model files use several GB and larger contexts require additional RAM. This integration has not been tested here against a downloaded model. Do not run this mode on an ordinary ephemeral GitHub runner.
 
 ### Optional OpenAI or Claude
 
@@ -179,7 +202,7 @@ Set `AI_PROVIDER=openai` with `OPENAI_API_KEY`, or `AI_PROVIDER=anthropic` with 
 
 ### Option A: GitHub Actions, no always-on PC
 
-1. Create a repository and upload the **contents** of this folder, including `.github/workflows/osint.yml`, `bot.py`, `sources.json` and tests. Do not upload `.env`, local previews or `.run.lock`.
+1. Create a repository and upload the **contents** of this folder, including `.github/workflows/osint.yml`, `bot.py`, `osint_digest/`, `config/sources.json` and `tests/`. Do not upload `.env`, local previews or `.run.lock`.
 2. For the documented no-runner-charge option, use a **public repository with standard GitHub-hosted runners**. Your source configuration and `state/state.json` will be public. They contain public article URLs, source status, timestamps, retry metadata and Discord message IDs, but no webhook token, API key or full article body. If that visibility is inappropriate, use a private repository and check its included minutes, or run locally.
 3. Under **Settings → Secrets and variables → Actions → Secrets**, create `DISCORD_WEBHOOK_URL`; also create `GEMINI_API_KEY` if using Gemini. Store secrets only as repository secrets.
 4. Under **Variables**, set `AI_PROVIDER` to `gemini` (or `none`). Optionally set `AI_MODEL`. Optional paid providers also need their own secret and `ALLOW_PAID_AI=true` variable.
@@ -221,7 +244,7 @@ On Linux, an hourly cron example is `17 * * * * /usr/bin/python3 /absolute/path/
 
 ## Validation
 
-Run `python -m unittest -v` for offline tests of IOC normalization, HTML extraction, unsupported AI evidence, failure fallback, opt-in for paid AI, feed initialization, queue persistence, deduplication, URL restrictions, Discord field limits and failed delivery recovery. See `VALIDATION.md` for the checks completed with this package.
+Run `python -m unittest -v` for offline tests of IOC normalization, HTML extraction, unsupported AI evidence, failure fallback, opt-in for paid AI, feed initialization, queue persistence, deduplication, URL restrictions, Discord field limits and failed delivery recovery. See [docs/VALIDATION.md](docs/VALIDATION.md) for the checks completed with this package.
 
 ## Official references (checked October 9, 2026 UTC)
 
