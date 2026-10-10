@@ -1,0 +1,24 @@
+name: osint-digest
+services:
+  digest:
+    build: .
+    image: osint-digest-server:local
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 5m
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    volumes:
+      - digest-data:/data
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+volumes:
+  digest-data:

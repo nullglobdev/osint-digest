@@ -21,6 +21,8 @@ from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
 from pathlib import Path
 
+from ai_endpoints import ollama_base_url
+
 ROOT = Path(__file__).resolve().parent
 UA = 'OSINTDigest/0.1 (+scheduled security research feed reader)'
 MAX_BYTES = 4_000_000
@@ -249,7 +251,7 @@ def extract_iocs(text):
 def api_json(url, payload, headers=None):
     req = urllib.request.Request(url, data=json.dumps(payload).encode(),
                                  headers={'Content-Type': 'application/json', **(headers or {})})
-    # API URLs are fixed provider endpoints or explicitly configured localhost.
+    # API URLs are fixed cloud endpoints or an explicitly configured Ollama server.
     with urllib.request.urlopen(req, timeout=120) as r:
         return json.loads(r.read(2_000_000))
 
@@ -310,7 +312,8 @@ def summarize(text):
             raw = ''.join(x.get('text', '') for x in data['candidates'][0]['content']['parts'])
         elif provider == 'ollama':
             model = model or 'qwen3:8b'
-            data = api_json('http://127.0.0.1:11434/api/chat',
+            endpoint = ollama_base_url(os.getenv('OLLAMA_BASE_URL', 'http://127.0.0.1:11434'))
+            data = api_json(endpoint + '/api/chat',
                             {'model': model, 'stream': False, 'format': 'json',
                              'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': clipped}],
                              'options': {'num_predict': 3000, 'num_ctx': 16384}})
@@ -551,13 +554,20 @@ def test_ai(sources, source_name):
         return 1
 
 
-def run(args):
-    sources = [s for s in json.loads((ROOT / 'sources.json').read_text()) if s.get('enabled', True)]
+def run(args, sources=None, stop_requested=None):
+    # A server cycle supplies a consistent configuration snapshot and can stop
+    # between articles, after the current delivery has been recorded.
+    if sources is None:
+        sources = json.loads((ROOT / 'sources.json').read_text())
+    sources = [s for s in sources if s.get('enabled', True)]
+    stop_requested = stop_requested or (lambda: False)
     if getattr(args, 'test_ai', None):
         return test_ai(sources, args.test_ai)
     if args.check_feeds:
         failures = 0
         for s in sources:
+            if stop_requested():
+                break
             try:
                 _, raw, _, _ = fetch(s['feed'], s['hosts'])
                 print(f"OK {s['name']}: {len(parse_feed(raw, s))} articles")
@@ -579,6 +589,8 @@ def run(args):
         due = []
         selected = set()
         for source in sources[:batch]:
+            if stop_requested():
+                break
             try:
                 # Bypass conditional requests and delivery history for this explicit batch.
                 _, raw, _, _ = fetch(source['feed'], source['hosts'])
@@ -600,6 +612,8 @@ def run(args):
                 save_state(path, state)
     else:
         for source in sources:
+            if stop_requested():
+                break
             try:
                 n = discover(source, state, args.backfill)
                 print(f"{source['name']}: {n} queued")
@@ -618,6 +632,9 @@ def run(args):
     completed = 0
     ai_summaries = 0
     for index, entry in enumerate(due, 1):
+        if stop_requested():
+            print('Stopping after the current operation; queued articles are retained.', flush=True)
+            break
         source = by_name[entry['source']]
         try:
             print(f"PROCESSING {index}/{len(due)} {entry['source']}: retrieving article and generating report...", flush=True)

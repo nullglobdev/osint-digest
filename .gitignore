@@ -15,3 +15,7 @@ state/*.bak
 state/*.json
 settings.json
 *.log
+server-data/
+.server-test/
+server.json
+osint-digest-*.tar.gz

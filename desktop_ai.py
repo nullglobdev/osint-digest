@@ -3,6 +3,7 @@ import json
 import re
 import urllib.request
 from urllib.parse import urlencode
+from ai_endpoints import ollama_base_url
 
 PROVIDERS = {'Google Gemini': 'gemini', 'OpenAI': 'openai', 'Anthropic Claude': 'anthropic',
              'Local Ollama': 'ollama', 'Publisher excerpts (no AI)': 'none'}
@@ -41,7 +42,7 @@ def text_model(provider, model):
     return True
 
 
-def list_models(provider, api_key=''):
+def list_models(provider, api_key='', ollama_url='http://127.0.0.1:11434'):
     if provider == 'none':
         return []
     if provider in KEY_ENV and (not api_key or any(ord(c) < 32 or ord(c) == 127 for c in api_key)):
@@ -49,7 +50,7 @@ def list_models(provider, api_key=''):
     endpoints = {'gemini': 'https://generativelanguage.googleapis.com/v1beta/models',
                  'openai': 'https://api.openai.com/v1/models',
                  'anthropic': 'https://api.anthropic.com/v1/models',
-                 'ollama': 'http://127.0.0.1:11434/api/tags'}
+                 'ollama': ollama_base_url(ollama_url) + '/api/tags'}
     headers = {'gemini': {'x-goog-api-key': api_key},
                'openai': {'Authorization': 'Bearer ' + api_key},
                'anthropic': {'x-api-key': api_key, 'anthropic-version': '2023-06-01'},

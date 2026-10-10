@@ -1,5 +1,7 @@
 # OSINT Digest for Windows
 
+For continuous operation on a server without a GUI, use the separate [container edition](CONTAINER.md). The desktop and server share the collector but keep separate configuration and delivery history.
+
 ## Install and connect
 
 1. Download `OSINTDigest-Setup-1.2.0-x64.exe` from [GitHub Releases](https://github.com/ry304/osint-digest/releases/latest) and run it. Repository access is required because the repository is private. It installs for your Windows user, without requiring administrator rights. Windows 10/11 x64 is the target platform; Python is bundled.

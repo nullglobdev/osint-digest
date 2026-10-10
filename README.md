@@ -4,7 +4,24 @@ Download the Windows installer or portable ZIP from [GitHub Releases](https://gi
 
 **Windows desktop app:** a rounded navy workspace with Dark/Light/Windows themes, text scaling, and keyboard/accessibility features; graphical setup for Gemini, OpenAI, Claude, or Ollama; provider model discovery; editable RSS/Atom sources; AI previews; batch delivery; and automatic checks every 15–360 minutes with system-tray support. See [DESKTOP.md](DESKTOP.md) for installation and build instructions and [ACCESSIBILITY.md](ACCESSIBILITY.md) for accessibility features and validation status. The desktop installer bundles Python; the CLI instructions below remain supported.
 
-A scheduled Python collector that watches publisher RSS/Atom feeds and posts new articles to a Discord channel through a webhook. It needs Python 3.11+ and **no pip packages**. This is a working starter, not a deployed service. It does not read Discord messages or support slash commands.
+**Server container:** run continuously without a GUI using Docker Compose, with interactive terminal setup/settings, provider model discovery, custom sources, persistent delivery history, and checks every 15–360 minutes. No Python installation or exposed ports are needed on the host. See [CONTAINER.md](CONTAINER.md).
+
+| Deployment | Setup and management | Runs while |
+|---|---|---|
+| Windows desktop | Rounded graphical app and system tray | The app is open and the PC is awake |
+| Server container | Interactive terminal scripts over SSH | Docker and the server are running |
+| Original Python CLI | `.env`, source file, and your scheduler | Each scheduled command executes |
+
+From a checkout on your Docker server:
+
+```sh
+sh scripts/server.sh setup
+sh scripts/server.sh start
+# Change configuration later:
+sh scripts/server.sh settings
+```
+
+The shared collector watches publisher RSS/Atom feeds and posts new articles to a Discord channel through a webhook. The original CLI needs Python 3.11+ and **no pip packages**. It does not read Discord messages or support slash commands.
 
 ## Choose the cost model
 
@@ -18,7 +35,7 @@ A scheduled Python collector that watches publisher RSS/Atom feeds and posts new
 
 There is no dependable promise of permanently free automated Claude/OpenAI API use. Consumer chat access is not a substitute for an API account. This project does not automate consumer chat websites or reuse their session cookies.
 
-**Suggested first deployment:** hourly GitHub Actions in a public repository, with Gemini on an unpaid project if eligible. Start with `none` to verify collection and delivery. Use a local timer plus Ollama if you prefer to avoid a cloud AI quota.
+Use the desktop for a personal PC or the container for an always-on server. Start with publisher excerpts (`none`) and a local preview, then configure your AI provider. The original CLI scheduling options below remain available.
 
 ## What each post contains
 
@@ -152,7 +169,7 @@ AI_PROVIDER=ollama
 AI_MODEL=qwen3:8b
 ```
 
-Ollama must be running on the same machine at `127.0.0.1:11434`. Model files use several GB and larger contexts require additional RAM. This integration is included but was not run against a downloaded model here. Do not run this mode on an ordinary ephemeral GitHub runner.
+Ollama defaults to `http://127.0.0.1:11434` for the CLI. Set `OLLAMA_BASE_URL` to use another operator-controlled endpoint. The container wizard stores its own reachable Ollama URL; see [container connectivity](CONTAINER.md#ollama-connectivity). Model files use several GB and larger contexts require additional RAM. This integration has not been tested here against a downloaded model. Do not run this mode on an ordinary ephemeral GitHub runner.
 
 ### Optional OpenAI or Claude
 

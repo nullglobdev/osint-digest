@@ -2,6 +2,18 @@
 
 Desktop 1.2 was checked on October 9, 2026 (America/New_York). Earlier validation dates are retained below.
 
+## Headless container edition
+
+Checked October 10, 2026 UTC using Linux containers on Docker Desktop (Engine 29.7.2, Compose 5.5.1) and the Python 3.12 slim Bookworm base image.
+
+- The Windows suite collected 73 tests: 72 passed and the POSIX-permissions test was skipped. The Linux container suite collected 52 core/server/model tests: 48 passed and four Windows-only desktop settings tests were skipped. Linux tests ran with networking disabled and a read-only application filesystem.
+- Server tests cover fresh paused setup, inherited credential isolation, provider-specific keys, billing opt-in, configuration validation and concurrent-edit detection, custom sources and model selection, private Linux file modes, paused-service configuration reload, duplicate-process locks, health status, backups, preview/history isolation, credential redaction, and finishing the current post before stopping.
+- Built the actual image and ran the supplied Compose service with an isolated test volume. Verified UID/GID 10001, mode 0600 configuration, read-only application files, no Qt/GUI dependencies, and no private developer configuration in the image.
+- `python scripts/test_container.py` passed offline container acceptance checks for persistent settings/history after restart, rejection of a second daemon sharing the volume, noninteractive password-input refusal, mocked end-to-end delivery and queue recovery, backup, and clean SIGTERM shutdown. All test containers had networking disabled; no real Discord messages or AI calls were made.
+- The real interactive `docker compose run --rm digest setup` wizard completed in a terminal, preserved hidden webhook input, and saved a 360-minute interval and paused schedule. The running service loaded the changed settings without rebuilding its image.
+- The downloadable server source archive was extracted into an isolated folder, built successfully as its own Docker image, and passed all 41 bundled core/server tests inside a network-disabled Linux container. The archive uses an explicit allowlist and Linux shell line endings.
+- Live AI/provider generation and Discord posting were not retested for this container edition. ARM64 and a separate production Linux host were not tested. The existing collector's at-least-once delivery and extraction limitations still apply.
+
 ## Desktop 1.2.0 interface update
 
 - All 52 offline tests passed in the pinned Windows build environment. The Qt interface preserves provider credentials, model discovery, source configuration, worker routing, scheduling, and tray behavior.

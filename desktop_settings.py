@@ -144,7 +144,7 @@ def atomic_json(path, value):
 def apply_environment(settings):
     # The desktop app never imports credentials or provider choices from the shell or repo .env.
     for key in ('DISCORD_WEBHOOK_URL', 'GEMINI_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY',
-                'AI_PROVIDER', 'AI_MODEL', 'ALLOW_PAID_AI', 'MAX_POSTS'):
+                'AI_PROVIDER', 'AI_MODEL', 'ALLOW_PAID_AI', 'MAX_POSTS', 'OLLAMA_BASE_URL'):
         os.environ.pop(key, None)
     os.environ.update(DISCORD_WEBHOOK_URL=settings['webhook'],
                       AI_PROVIDER=settings['provider'], AI_MODEL=settings['model'],
