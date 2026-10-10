@@ -6,6 +6,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 from osint_digest.core import collector as bot
 SOURCE = {'name': 'Test', 'hosts': ['publisher.example'], 'feed': 'https://publisher.example/feed'}
@@ -17,6 +18,103 @@ def feed(*names):
 
 
 class Tests(unittest.TestCase):
+    def test_normal_run_checks_every_source_sends_all_unsent_and_remembers_restart(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            sources = [SOURCE, {**SOURCE, 'name': 'Other', 'feed': SOURCE['feed'] + '2'},
+                       {**SOURCE, 'name': 'Disabled', 'enabled': False}]
+            args = SimpleNamespace(check_feeds=False, dry_run=False)
+            raw = [feed(*(f'a{i}' for i in range(8))), feed('a0', *(f'b{i}' for i in range(8)))]
+            def get(url, hosts, headers):
+                return 200, raw[0 if url == SOURCE['feed'] else 1], {'ETag': 'cached'}, url
+            with patch.object(bot, 'ROOT', root), patch.dict(os.environ, DISCORD_WEBHOOK_URL='fake', MAX_POSTS='1'), patch.object(bot, 'fetch', side_effect=get) as fetch, patch.object(bot, 'article_report', return_value={'ai_status': 'No AI', 'analysis': None}), patch.object(bot, 'send_discord', return_value='message') as send, contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(bot.run(args, sources=sources), 0)
+                self.assertEqual(fetch.call_count, 2)
+                self.assertEqual(send.call_count, 16)  # No five-post cap; shared URL sent once.
+                self.assertEqual(bot.run(args, sources=sources), 0)  # Reload history from disk.
+                self.assertEqual(fetch.call_count, 4)
+                self.assertEqual(send.call_count, 16)
+                raw[1] = feed('new', 'a0')
+                self.assertEqual(bot.run(args, sources=sources), 0)
+                self.assertEqual(fetch.call_count, 6)
+                self.assertEqual(send.call_count, 17)
+            saved = json.loads((root / 'state/state.json').read_text())
+            self.assertEqual(len(saved['seen']), 17)
+            self.assertFalse(saved['pending'])
+
+    def test_legacy_baseline_is_rechecked_but_confirmed_sent_articles_are_skipped(self):
+        state = {'feeds': {'Test': {'initialized': True, 'etag': 'old', 'modified': 'old'}},
+                 'seen': {'https://publisher.example/baseline': {'status': 'baseline'},
+                          'https://publisher.example/sent': {'status': 'sent'}}, 'pending': {}}
+        with patch.object(bot, 'fetch', return_value=(200, feed('baseline', 'sent'), {'ETag': 'new'}, '')) as fetch:
+            self.assertEqual(bot.discover(SOURCE, state), 1)
+            self.assertEqual(fetch.call_args.args[2], {})
+        self.assertEqual(list(state['pending']), ['https://publisher.example/baseline'])
+        with patch.object(bot, 'fetch', return_value=(304, b'', {}, '')) as fetch:
+            self.assertEqual(bot.discover(SOURCE, state), 0)
+            self.assertEqual(fetch.call_args.args[2], {'If-None-Match': 'new'})
+
+    def test_failed_source_does_not_prevent_later_sources_or_due_retries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            item = lambda name: {'url': 'https://publisher.example/' + name, 'source': 'Test',
+                                 'title': name, 'published': '', 'discovered': name}
+            entries = [item('sent'), item('retry'), {**item('later'), 'retry_after': 99999999999}]
+            bot.save_state(root / 'state/state.json', {'feeds': {},
+                'seen': {entries[0]['url']: {'status': 'sent'}}, 'pending': {x['url']: x for x in entries}})
+            args = SimpleNamespace(check_feeds=False, dry_run=False)
+            sources = [SOURCE, {**SOURCE, 'name': 'Other', 'feed': SOURCE['feed'] + '2'}]
+            with patch.object(bot, 'ROOT', root), patch.dict(os.environ, DISCORD_WEBHOOK_URL='fake'), patch.object(bot, 'fetch', side_effect=[TimeoutError, (200, feed('fresh'), {}, '')]) as fetch, patch.object(bot, 'article_report', return_value={'ai_status': 'No AI', 'analysis': None}) as report, patch.object(bot, 'send_discord', return_value='message'), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(bot.run(args, sources=sources), 1)
+                self.assertEqual(fetch.call_count, 2)
+                self.assertEqual({call.args[1]['title'] for call in report.call_args_list}, {'retry', 'fresh'})
+            saved = json.loads((root / 'state/state.json').read_text())
+            self.assertEqual(list(saved['pending']), ['https://publisher.example/later'])
+
+    def test_limited_test_with_one_source_records_success_without_queuing_failures(self):
+        for dry_run in (False, True):
+            with self.subTest(dry_run=dry_run), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                state = {'feeds': {}, 'seen': {}, 'pending': {}}
+                bot.save_state(root / 'state/state.json', state)
+                before = (root / 'state/state.json').read_bytes()
+                args = SimpleNamespace(check_feeds=False, dry_run=dry_run, test_mode=True, max_posts=3)
+                def report(source, entry):
+                    return bot.make_report(entry, 'Article text. ' * 30, 'HTML')
+                with patch.object(bot, 'ROOT', root), patch.dict(os.environ, DISCORD_WEBHOOK_URL='fake', AI_PROVIDER='none'), patch.object(bot, 'fetch', return_value=(200, feed('one', 'two', 'three', 'four'), {}, '')), patch.object(bot, 'article_report', side_effect=report) as process, patch.object(bot, 'send_discord', side_effect=[TimeoutError, 'two', 'three']) as send, contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(bot.run(args, sources=[SOURCE]), 0 if dry_run else 1)
+                    self.assertEqual(process.call_count, 3)
+                    self.assertEqual(send.call_count, 0 if dry_run else 3)
+                after = json.loads((root / 'state/state.json').read_text())
+                self.assertFalse(after['pending'])
+                self.assertFalse(after['feeds'])
+                if dry_run:
+                    self.assertEqual((root / 'state/state.json').read_bytes(), before)
+                else:
+                    self.assertEqual(set(after['seen']), {'https://publisher.example/two', 'https://publisher.example/three'})
+                    # The next normal run sends only the two remaining unsent articles.
+                    with patch.object(bot, 'ROOT', root), patch.dict(os.environ, DISCORD_WEBHOOK_URL='fake', AI_PROVIDER='none'), patch.object(bot, 'fetch', return_value=(200, feed('one', 'two', 'three', 'four'), {}, '')), patch.object(bot, 'article_report', side_effect=report), patch.object(bot, 'send_discord', return_value='normal') as send, contextlib.redirect_stdout(io.StringIO()):
+                        self.assertEqual(bot.run(SimpleNamespace(check_feeds=False, dry_run=False), sources=[SOURCE]), 0)
+                        self.assertEqual({call.args[0]['title'] for call in send.call_args_list}, {'one', 'four'})
+
+    def test_cli_requires_explicit_mode_for_limits_and_ignores_legacy_env_cap(self):
+        for flags in (['--batch', '5'], ['--max-posts', '5'], ['--test-mode', '--max-posts', '0'],
+                      ['--test-mode', '--check-feeds'], ['--test-mode', '--batch', '2', '--max-posts', '3']):
+            with self.subTest(flags=flags), patch.object(bot, 'load_env'), patch.object(bot.sys, 'argv', ['bot.py', *flags]), patch.object(bot, 'run') as run, contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as error:
+                    bot.main()
+                self.assertEqual(error.exception.code, 2)
+                run.assert_not_called()
+        with tempfile.TemporaryDirectory() as tmp, patch.object(bot, 'ROOT', Path(tmp)), patch.object(bot, 'load_env'), patch.dict(os.environ, MAX_POSTS='1'), patch.object(bot, 'run', return_value=0) as run:
+            with patch.object(bot.sys, 'argv', ['bot.py']):
+                self.assertEqual(bot.main(), 0)
+                self.assertIsNone(run.call_args.args[0].max_posts)
+                self.assertFalse(run.call_args.args[0].test_mode)
+            with patch.object(bot.sys, 'argv', ['bot.py', '--test-mode', '--max-posts', '10']):
+                self.assertEqual(bot.main(), 0)
+                self.assertEqual(run.call_args.args[0].max_posts, 10)
+                self.assertTrue(run.call_args.args[0].test_mode)
+
     def test_repository_sources_are_loaded_from_config_folder(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -27,22 +125,24 @@ class Tests(unittest.TestCase):
                 self.assertEqual(bot.run(args), 0)
                 self.assertEqual(fetch.call_args.args, (SOURCE['feed'], SOURCE['hosts']))
 
-    def test_baseline_dedup_and_backlog(self):
+    def test_discovery_queues_all_unsent_and_keeps_backlog(self):
         state = {'feeds': {}, 'seen': {}, 'pending': {}}
         def get(raw):
             return lambda *a: (200, raw, {'ETag': 'test'}, '')
-        self.assertEqual(bot.discover(SOURCE, state, 0, get(feed('old'))), 0)
-        self.assertEqual(bot.discover(SOURCE, state, 0, get(feed('new', 'old'))), 1)
-        self.assertEqual(bot.discover(SOURCE, state, 0, get(feed('new', 'old'))), 0)
-        bot.discover(SOURCE, state, 0, get(feed('newer')))
+        self.assertEqual(bot.discover(SOURCE, state, get(feed('old'))), 1)
+        state['seen']['https://publisher.example/old'] = {'status': 'sent'}
+        state['pending'].clear()
+        self.assertEqual(bot.discover(SOURCE, state, get(feed('new', 'old'))), 1)
+        self.assertEqual(bot.discover(SOURCE, state, get(feed('new', 'old'))), 0)
+        bot.discover(SOURCE, state, get(feed('newer')))
         self.assertIn('https://publisher.example/new', state['pending'])
-        bot.discover(SOURCE, state, 0, lambda *a: (304, b'', {}, ''))
+        bot.discover(SOURCE, state, lambda *a: (304, b'', {}, ''))
         self.assertEqual(len(state['pending']), 2)
 
     def test_failed_feed_does_not_seed_or_cache(self):
         state = {'feeds': {}, 'seen': {}, 'pending': {}}
         with self.assertRaises(ValueError):
-            bot.discover(SOURCE, state, 0, lambda *a: (200, b'<html/>', {'ETag': 'bad'}, ''))
+            bot.discover(SOURCE, state, lambda *a: (200, b'<html/>', {'ETag': 'bad'}, ''))
         self.assertFalse(state['feeds']['Test'].get('initialized'))
         self.assertFalse(state['seen'])
 
@@ -156,7 +256,7 @@ class Tests(unittest.TestCase):
                 bot.save_state(root / 'state/state.json', state)
                 before = (root / 'state/state.json').read_bytes()
                 args = type('Args', (), dict(test_ai=None, check_feeds=False, dry_run=dry_run,
-                                             backfill=0, max_posts=1, batch=count))()
+                                             test_mode=True, max_posts=count))()
                 def get_feed(url, hosts):
                     return 200, feed('item' + url.rsplit('feed', 1)[1]), {}, url
                 def report(source, entry):
@@ -170,7 +270,7 @@ class Tests(unittest.TestCase):
                     return str(calls)
                 with patch('osint_digest.core.collector.ROOT', root), patch.dict(os.environ, {'DISCORD_WEBHOOK_URL': 'fake', 'AI_PROVIDER': 'none'}), patch('osint_digest.core.collector.fetch', side_effect=get_feed) as fetch, patch('osint_digest.core.collector.article_report', side_effect=report) as process, patch('osint_digest.core.collector.send_discord', side_effect=send_report) as send, patch('osint_digest.core.collector.discover') as discover, contextlib.redirect_stdout(io.StringIO()):
                     self.assertEqual(bot.run(args), int(fail_first))
-                    self.assertEqual(fetch.call_count, count)
+                    self.assertEqual(fetch.call_count, 10)
                     self.assertEqual(process.call_count, count)
                     self.assertEqual(send.call_count, 0 if dry_run else count)
                     discover.assert_not_called()
@@ -181,22 +281,19 @@ class Tests(unittest.TestCase):
                     self.assertEqual((root / 'state/state.json').read_bytes(), before)
                     self.assertEqual(len(list((root / 'preview').glob('*.json'))), count)
                 else:
-                    self.assertEqual(len(after['pending']), 2 if fail_first else 1)
+                    self.assertEqual(len(after['pending']), 1)
                     for i in range(count):
                         sent = after['seen'][f'https://publisher.example/item{i}']
                         self.assertEqual(sent['message_id'], 'old' if fail_first and i == 0 else str(i + 1))
-                    if fail_first:
-                        retry = after['pending']['https://publisher.example/item0']
-                        self.assertEqual(retry['attempts'], 1)
-                        self.assertIn('retry_after', retry)
 
-    def test_batch_rejects_counts_exceeding_enabled_sources(self):
+    def test_repeat_batch_requires_explicit_test_mode(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / 'sources.json').write_text(json.dumps([SOURCE]))
             args = type('Args', (), dict(test_ai=None, check_feeds=False, dry_run=True, batch=5))()
             with patch('osint_digest.core.collector.ROOT', root), patch('osint_digest.core.collector.fetch') as fetch, contextlib.redirect_stdout(io.StringIO()):
-                self.assertEqual(bot.run(args), 1)
+                with self.assertRaisesRegex(ValueError, '--test-mode'):
+                    bot.run(args)
                 fetch.assert_not_called()
             self.assertFalse((root / 'state/state.json').exists())
 
@@ -263,7 +360,7 @@ class Tests(unittest.TestCase):
             state = {'feeds': {'Test': {'initialized':True}}, 'seen':{}, 'pending':{
                 'https://publisher.example/a': {'url':'https://publisher.example/a','source':'Test','title':'A','published':'now','discovered':'now'}}}
             bot.save_state(root/'state/state.json', state)
-            args = type('Args', (), dict(check_feeds=False,dry_run=False,backfill=0,max_posts=5))()
+            args = type('Args', (), dict(check_feeds=False,dry_run=False))()
             with patch('osint_digest.core.collector.ROOT',root), patch.dict(os.environ, {'DISCORD_WEBHOOK_URL':'fake','AI_PROVIDER':'none'}), patch('osint_digest.core.collector.discover',return_value=0), patch('osint_digest.core.collector.robots_allowed',return_value=True), patch('osint_digest.core.collector.fetch',return_value=(200,b'<article>'+b'Hello world. '*50+b'</article>',{'Content-Type':'text/html'},'')), patch('osint_digest.core.collector.send_discord',side_effect=TimeoutError):
                 self.assertEqual(bot.run(args),1)
             after = json.loads((root/'state/state.json').read_text())

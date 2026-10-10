@@ -6,7 +6,7 @@ import io
 from pathlib import Path
 import tarfile
 
-VERSION = '1.0.0'
+VERSION = '1.1.0'
 FILES = ('Dockerfile', '.dockerignore', 'compose.yaml', 'bot.py', 'server.py',
          'osint_digest/__init__.py', 'osint_digest/paths.py',
          'osint_digest/core/__init__.py', 'osint_digest/core/collector.py',

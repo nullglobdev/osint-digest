@@ -14,7 +14,7 @@ from osint_digest.core.providers import PROVIDERS, KEY_ENV
 from osint_digest.paths import resource_path
 
 APP_NAME = 'OSINT Digest'
-VERSION = '1.2.0'
+VERSION = '1.3.0'
 DEFAULTS = {'provider': 'gemini', 'model': 'gemini-3.1-flash-lite',
             'webhook': '', 'api_key': '', 'batch_size': 5, 'interval_minutes': 60,
             'close_to_tray': True, 'profiles': {}, 'theme': 'dark', 'text_scale': 100}
@@ -89,7 +89,7 @@ def validate(settings):
     if settings['provider'] == 'gemini' and settings['model'] and not re.fullmatch(r'[A-Za-z0-9._-]+', settings['model']):
         raise ValueError('Choose a Gemini model ID without the models/ prefix.')
     if not 1 <= int(settings['batch_size']) <= 20:
-        raise ValueError('Choose between 1 and 20 articles.')
+        raise ValueError('Choose a test article limit between 1 and 20.')
     if not 15 <= int(settings['interval_minutes']) <= 360:
         raise ValueError('Choose an automatic check interval between 15 and 360 minutes.')
 
@@ -145,7 +145,6 @@ def apply_environment(settings):
         os.environ.pop(key, None)
     os.environ.update(DISCORD_WEBHOOK_URL=settings['webhook'],
                       AI_PROVIDER=settings['provider'], AI_MODEL=settings['model'],
-                      ALLOW_PAID_AI='true' if settings['provider'] in ('openai', 'anthropic') else 'false',
-                      MAX_POSTS=str(settings['batch_size']))
+                      ALLOW_PAID_AI='true' if settings['provider'] in ('openai', 'anthropic') else 'false')
     if settings['provider'] in KEY_ENV:
         os.environ[KEY_ENV[settings['provider']]] = settings['api_key']

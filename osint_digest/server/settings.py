@@ -193,7 +193,7 @@ def configured_environment(config):
     provider = config['provider']
     profile = config['profiles'].get(provider, {})
     os.environ.update(AI_PROVIDER=provider, AI_MODEL=profile.get('model', ''),
-                      DISCORD_WEBHOOK_URL=config['webhook'], MAX_POSTS=str(config['max_posts']),
+                      DISCORD_WEBHOOK_URL=config['webhook'],
                       ALLOW_PAID_AI='true' if profile.get('allow_paid') else 'false',
                       OLLAMA_BASE_URL=config['ollama_url'])
     if provider in KEY_ENV:

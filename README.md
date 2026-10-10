@@ -1,8 +1,8 @@
 # OSINT Digest for Discord
 
-Download the Windows installer or portable ZIP from [GitHub Releases](https://github.com/ry304/osint-digest/releases/latest). This repository is private; downloads require access to the repository.
+Download the Windows installer or portable ZIP from [GitHub Releases](https://github.com/nullglobdev/osint-digest/releases/latest).
 
-**Windows desktop app:** a rounded navy workspace with Dark/Light/Windows themes, text scaling, and keyboard/accessibility features; graphical setup for Gemini, OpenAI, Claude, or Ollama; provider model discovery; editable RSS/Atom sources; AI previews; batch delivery; and automatic checks every 15–360 minutes with system-tray support. See [DESKTOP.md](docs/DESKTOP.md) for installation and build instructions and [ACCESSIBILITY.md](docs/ACCESSIBILITY.md) for accessibility features and validation status. The desktop installer bundles Python; the CLI instructions below remain supported.
+**Windows desktop app:** a rounded navy workspace with Dark/Light/Windows themes, text scaling, and keyboard/accessibility features; graphical setup for Gemini, OpenAI, Claude, or Ollama; provider model discovery; editable RSS/Atom sources; AI previews; delivery history and limited Test mode; and automatic checks every 15–360 minutes with system-tray support. See [DESKTOP.md](docs/DESKTOP.md) for installation and build instructions and [ACCESSIBILITY.md](docs/ACCESSIBILITY.md) for accessibility features and validation status. The desktop installer bundles Python; the CLI instructions below remain supported.
 
 **Server container:** run continuously without a GUI using Docker Compose, with interactive terminal setup/settings, provider model discovery, custom sources, persistent delivery history, and checks every 15–360 minutes. No Python installation or exposed ports are needed on the host. See [CONTAINER.md](docs/CONTAINER.md).
 
@@ -117,7 +117,7 @@ To change sources, edit `config/sources.json`. Set `enabled` to false to disable
 6. Preview up to three articles locally, without posting or changing delivery state:
 
    ```powershell
-   py -3 bot.py --dry-run --backfill 1 --max-posts 3
+   py -3 bot.py --test-mode --max-posts 3 --dry-run
    ```
 
    Open the JSON and CSV files in `preview`. With AI enabled, a dry run still calls that AI provider. `--check-feeds` never calls AI.
@@ -125,35 +125,38 @@ To change sources, edit `config/sources.json`. Set `enabled` to false to disable
 7. Send a small initial batch to your test channel, if desired:
 
    ```powershell
-   py -3 bot.py --backfill 1 --max-posts 3
+   py -3 bot.py --test-mode --max-posts 3
    ```
 
-   This queues the first entry from **each enabled feed** and sends up to three now. Remaining queued entries are sent on later runs. Omit `--backfill 1` for a quiet baseline instead. Backfill applies only the first time each source is successfully seen; it does not resend previously initialized sources.
+   This checks **every enabled feed** and attempts up to three articles. Test mode allows repeats. Successful posts are recorded; failed test attempts do not create or change normal retries.
 
-8. Run `py -3 bot.py` thereafter. Only newly discovered URLs and queued retries are eligible.
+8. Run `py -3 bot.py` for normal collection. Every enabled source is checked, and all unsent articles and due retries are processed. Previously delivered URLs are skipped.
 
 On macOS/Linux, use `python3` instead of `py -3`; the rest is the same.
 
-## Send a batch from 5 or 10 sources
+## Normal collection and limited tests
 
-With your Gemini provider, model, API key and Discord webhook configured in `.env`, run one of:
-
-```powershell
-py -3 bot.py --batch 5
-py -3 bot.py --batch 10
-```
-
-Each command selects the first feed entry from each of the first N enabled sources in `config/sources.json`, runs article extraction and AI summarization, and sends one Discord message per article in a single run. Processing is sequential; you do not need to run a separate AI test first. Change the source order to choose which five are used. There are currently ten enabled sources, so `--batch 10` covers all of them. N controls the batch limit instead of `MAX_POSTS` or `--max-posts`.
-
-**Batch mode deliberately includes previously sent articles and bypasses retry delays for the selected entries.** Repeating it may repeat Discord posts. It does not erase delivery history or process unrelated pending articles. Feed failures are reported, while article/delivery failures remain queued for a later normal run. Successful deliveries update state. If AI is unavailable, the normal excerpt fallback is posted and the terminal reports the AI status and final summary/excerpt counts; fewer than N messages may be delivered if retrieval or delivery fails.
-
-To preview the batch locally without Discord posts or delivery-state changes:
+With your provider and Discord webhook configured in `.env`, run:
 
 ```powershell
-py -3 bot.py --batch 5 --dry-run
+py -3 bot.py
 ```
 
-For regular monitoring that only sends new or pending articles, use `py -3 bot.py --max-posts 10` instead. That command checks all enabled feeds but may send fewer than ten when there is little new content. Every command checks once and exits; use the scheduling options below for recurring runs.
+Normal runs check every enabled source in `config/sources.json`, queue all available URLs without a successful delivery record, and process all eligible pending articles. Processing is sequential, with no article-count cap. Delivery history persists between runs and restarts. A failed source does not prevent the others from being checked; failed articles retain their retry delay.
+
+**First run and upgrades:** available feed articles that have never been delivered are eligible immediately. Older `baseline` records represent unsent articles, so they become eligible if still in a feed. Successfully sent records stay intact. The first normal run can therefore send many articles. Preview with `py -3 bot.py --dry-run`, or use a limited test first.
+
+Enable Test mode explicitly for repeat articles and a limit of 1–20 attempts (default 5):
+
+```powershell
+py -3 bot.py --test-mode --max-posts 5 --dry-run
+py -3 bot.py --test-mode --max-posts 5
+py -3 bot.py --test-mode --max-posts 10
+```
+
+Tests also check every enabled source. They sample the first entry from each feed in source order, then the second entries, until the limit is reached, skipping duplicate URLs within the test. Repeats of previously sent articles and immediate retries are allowed. Fewer articles may be processed if feeds have fewer unique entries or fail. A successful test delivery updates history, so normal collection will skip it. Test failures do not enter or alter the normal retry queue. Previews never post or change history; configured AI still uses its quota.
+
+`--batch N` remains an alias for `--max-posts N`, but requires `--test-mode`. The old `--backfill` option has been removed, and `MAX_POSTS` in an existing `.env` no longer limits normal runs. Remove limits from scheduled commands; use `py -3 bot.py`. Each CLI command checks once and exits; use the scheduling options below for recurring runs.
 
 ## Enable AI
 
@@ -207,7 +210,7 @@ Set `AI_PROVIDER=openai` with `OPENAI_API_KEY`, or `AI_PROVIDER=anthropic` with 
 3. Under **Settings → Secrets and variables → Actions → Secrets**, create `DISCORD_WEBHOOK_URL`; also create `GEMINI_API_KEY` if using Gemini. Store secrets only as repository secrets.
 4. Under **Variables**, set `AI_PROVIDER` to `gemini` (or `none`). Optionally set `AI_MODEL`. Optional paid providers also need their own secret and `ALLOW_PAID_AI=true` variable.
 5. Ensure Actions may write repository contents. Branch protection/rulesets can prevent state commits; do not weaken an existing protected project just for this bot. A separate dedicated repository is simpler.
-6. Open **Actions → OSINT Digest → Run workflow** on the default branch. The first run baselines existing articles and normally posts nothing.
+6. Open **Actions → OSINT Digest → Run workflow** on the default branch. The first run sends all available unsent articles; later runs skip delivered URLs.
 7. To enable hourly checks, set the repository variable `ENABLE_SCHEDULE` to `true` after configuring secrets. Scheduled collection is off by default. Enabled schedules check at minute 17 of each hour (UTC). For twice an hour, change cron to `17,47 * * * *`. Start hourly and watch quotas and noise before increasing frequency.
 8. Check workflow results. A failed feed/article produces a failed job while other sources continue, and pending/retry state is still committed. **A failed state-persistence step needs attention** to avoid repeats on later runs.
 
@@ -230,7 +233,7 @@ On Linux, an hourly cron example is `17 * * * * /usr/bin/python3 /absolute/path/
 ## Reliability and limits
 
 - Conditional RSS requests use ETag/Last-Modified when publishers provide them. HTML is retrieved only for queued articles; page redirects remain restricted to the publisher allowlist. Robots.txt is respected for article retrieval. Feed access does not grant redistribution rights; share short summaries and attribution, not full article mirrors.
-- The first successful read of each new source establishes a baseline. A failed feed is not initialized and is retried next time.
+- The first successful read queues all available unsent articles. A failed feed is not initialized and is retried next time.
 - Newly discovered URLs are durably queued before article processing. A queue entry persists even if the article falls out of a later RSS response. A long outage can still miss items that left the RSS window before discovery.
 - A URL is marked sent only after Discord acknowledges the message. Failed deliveries remain queued with bounded exponential retry delay. Discord 429 responses receive short retries.
 - Delivery is **at least once**, not exactly once. A crash/network timeout after Discord accepts a post but before state is saved can create a duplicate. GitHub state-push failure can do the same. Normal repeated runs deduplicate by canonical article URL.
@@ -238,7 +241,7 @@ On Linux, an hourly cron example is `17 * * * * /usr/bin/python3 /absolute/path/
 - Generic HTML extraction is imperfect. Images, screenshots, PDFs, linked IOC files and JavaScript-only content are not parsed. A challenge page with enough text can evade the basic length check; inspect early outputs. The bot never follows or probes extracted IOC URLs.
 - The collector caps a page at 4 MB, IOC candidates at 2,000 and AI input at 24,000 characters (head plus tail for long articles). Coverage/truncation is labeled. All deterministic IOC extraction uses the full extracted text within the page size cap.
 - Missing AI or quota exhaustion results in an excerpt, not invented sections. Missing source facts remain unstated. There is no paid fallback.
-- Default maximum is five attempted posts per run. Persistent source/article failures are visible in logs and state. The queue/state has no automated retention cleanup in this starter; monitor its size if you run it long term.
+- Normal runs have no article-count cap. Only explicit Test mode limits attempts (1–20, default 5) and permits repeats. Persistent source/article failures are visible in logs and state. The queue/state has no automated retention cleanup; monitor its size if you run it long term.
 - Secrets are read from the environment or untracked `.env`. Exception messages are not printed because they may contain secret URLs. Discord mentions are suppressed and CSV formula prefixes are escaped.
 - This is an analyst information feed, not a malware detector, SIEM, threat-reputation verdict or automated enforcement system.
 

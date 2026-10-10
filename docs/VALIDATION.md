@@ -1,6 +1,18 @@
 # Validation record
 
-Desktop 1.2 was checked on October 9, 2026 (America/New_York). Earlier validation dates are retained below.
+Earlier validation dates and release-specific results are retained below.
+
+## Delivery behavior update: desktop 1.3 and server 1.1
+
+Checked October 10, 2026 (America/New_York).
+
+- Normal runs check all enabled sources and attempt every eligible unsent article, including on first discovery. Tests cover more than five deliveries, repeat runs loading history from disk, duplicate URLs shared by feeds, disabled sources, an unavailable publisher, due versus delayed retries, legacy baselines, conditional feed requests, and stale retry entries for already-sent articles.
+- Limited repeat delivery requires explicit Test mode in the CLI, desktop controls, or server menu/command. Tests verify all feeds are still checked, a limit may exceed the number of sources, successful test posts are recorded, previews leave history unchanged, and failed repeat tests do not create normal retries. Desktop and server automatic checks always use normal mode.
+- Windows suite: 84 tests collected, 83 passed, one POSIX-only permissions test skipped. The core/server suite passed all 50 tests in a network-disabled Linux container. No real Discord messages or AI calls were used.
+- The rebuilt Docker image passed offline container acceptance checks for private settings, persistent delivery history after restart, process locking, backup, and graceful shutdown. Normal and Test mode dashboard layouts were visually reviewed in dark and light themes; accessible names follow the changing Send button label.
+- The Windows 1.3.0 executable passed packaged startup checks from outside the repository without Python-specific environment settings: GUI/resources, Windows credential encryption, tray, accessibility metadata, and an empty credential profile. The installer and portable ZIP were built. The extracted server 1.1.0 bundle passed all 50 included tests in Linux with networking disabled.
+- Existing local credentials, delivery history, and previews (21 previously recorded files) were verified unchanged. Test output lives under ignored `.work/delivery/`.
+
 
 ## Repository organization update
 

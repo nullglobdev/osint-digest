@@ -29,6 +29,7 @@ case "${1:-help}" in
         ;;
     *)
         echo 'Usage: sh scripts/server.sh setup|settings|sources|models|start|stop|status|logs|update'
-        echo 'Actions: check-feeds|test-ai [--source NAME]|preview|batch|new [--count N]|test-discord|backup'
+        echo 'Actions: check-feeds|test-ai [--source NAME]|preview|new|test-discord|backup'
+        echo 'Manual tests: new|preview --test-mode [--count N] (allows repeat articles)'
         ;;
 esac

@@ -30,7 +30,8 @@ from osint_digest.desktop.tray import Tray
 from osint_digest.paths import PROJECT_ROOT
 
 TITLES = {'feeds': 'Checking publisher feeds', 'ai': 'Testing AI on a real article',
-          'preview': 'Preparing batch preview', 'batch': 'Sending latest articles to Discord',
+          'preview': 'Previewing unsent articles', 'test': 'TEST MODE: sending limited articles; repeats allowed',
+          'test-preview': 'TEST MODE: previewing limited articles; repeats allowed',
           'new': 'Checking for new articles', 'webhook': 'Checking Discord connection'}
 
 
@@ -233,9 +234,13 @@ class DigestApp(QMainWindow):
     def actions(self, parent, actions):
         frame = QWidget()
         layout = FlowLayout(frame)
+        buttons = []
         for title, command, primary in actions:
-            layout.addWidget(self.button(title, command, primary))
+            button = self.button(title, command, primary)
+            buttons.append(button)
+            layout.addWidget(button)
         parent.addWidget(frame)
+        return buttons
 
     def field(self, layout, title, widget, description=''):
         named(widget, title.replace('&', ''), description)
@@ -251,18 +256,28 @@ class DigestApp(QMainWindow):
         self.dashboard_grid.setContentsMargins(0, 0, 0, 0)
         self.dashboard_grid.setSpacing(16)
         page.addWidget(pair)
-        batch = self.card(self.dashboard_grid, 'Launch your intelligence digest', 'One recent article per selected publisher, delivered to your channel.')
+        batch = self.card(self.dashboard_grid, 'Launch your intelligence digest', 'Check every enabled source and deliver all articles that have not been sent.')
         self.batch_card = batch.parentWidget()
+        self.test_mode = named(QCheckBox('Test mode: allow repeats with an article limit'),
+                               'Test mode: allow repeats with an article limit',
+                               'Applies to manual Send and Preview only. Off each time the app opens.')
+        batch.addWidget(self.test_mode)
         self.batch_size = QSpinBox()
         self.batch_size.setRange(1, 20)
         self.batch_size.setValue(self.settings['batch_size'])
-        self.field(batch, 'Articles per run', self.batch_size, 'Choose between 1 and 20 articles.')
+        self.field(batch, 'Test article limit', self.batch_size, 'Maximum 1 to 20 articles in Test mode only.')
         self.selected_count = label('', 'accent')
         batch.addWidget(self.selected_count)
-        self.actions(batch, [('Send latest batch', lambda: self.start('batch'), True),
-                             ('Preview batch', lambda: self.start('preview'), False),
-                             ('Test AI', lambda: self.start('ai'), False)])
-        batch.addWidget(label('Latest batches can repeat articles already sent. Preview first to review the results.', 'muted'))
+        self.send_button, self.preview_button, _ = self.actions(batch, [
+            ('Check all and send new', lambda: self.start('test' if self.test_mode.isChecked() else 'new'), True),
+            ('Preview unsent articles', lambda: self.start('test-preview' if self.test_mode.isChecked() else 'preview'), False),
+            ('Test AI', lambda: self.start('ai'), False)])
+        self.send_button.setAccessibleName('')
+        self.preview_button.setAccessibleName('')
+        self.test_status = label('', 'muted')
+        batch.addWidget(self.test_status)
+        self.test_mode.toggled.connect(self.update_test_mode)
+        self.update_test_mode()
         auto = self.card(self.dashboard_grid, 'Continuous monitoring', 'Watch selected feeds for new research while your PC is awake.')
         self.auto_card = auto.parentWidget()
         self.interval = QSpinBox()
@@ -282,7 +297,7 @@ class DigestApp(QMainWindow):
         self.close_to_tray.setChecked(self.settings['close_to_tray'])
         self.close_to_tray.toggled.connect(self.save_preferences)
         auto.addWidget(self.close_to_tray)
-        auto.addWidget(label('The first check establishes a baseline. Use Exit to stop the app completely.', 'muted'))
+        auto.addWidget(label('Automatic checks always send unsent articles, even when manual Test mode is on. Use Exit to stop the app completely.', 'muted'))
         activity = self.card(page, 'Activity', 'Task progress and results. Pause updates to read at your own pace.')
         self.actions(activity, [('Check feeds', lambda: self.start('feeds'), False)])
         self.pause_log = named(QCheckBox('Pause live activity updates'), 'Pause live activity updates', 'Pause the display while reading. Collection and delivery continue.')
@@ -291,6 +306,14 @@ class DigestApp(QMainWindow):
         activity.addWidget(self.activity)
         self.set_text(self.activity, 'Ready. Set up your connection and preview your first digest.')
         page.addStretch()
+
+    def update_test_mode(self):
+        testing = self.test_mode.isChecked()
+        self.batch_size.setEnabled(testing)
+        self.send_button.setText('Send test articles' if testing else 'Check all and send new')
+        self.preview_button.setText('Preview test articles' if testing else 'Preview unsent articles')
+        self.test_status.setText('TEST MODE: manual tasks can repeat sent articles, up to the test limit.' if testing else
+                                'Normal mode: all enabled sources, all unsent articles, no article limit.')
 
     def _connection(self, page):
         form = self.card(page, 'Connect your workspace', 'Credentials are encrypted for your Windows account. Each provider keeps its own key and model.')
@@ -330,7 +353,7 @@ class DigestApp(QMainWindow):
         page.addStretch()
 
     def _sources(self, page):
-        body = self.card(page, 'Your intelligence sources', 'Batches use the first N enabled sources in this order. Automatic checks use every enabled source.')
+        body = self.card(page, 'Your intelligence sources', 'Every enabled source is checked on each run. Source order sets sampling priority in Test mode.')
         self.source_list = named(QTableWidget(0, 3), 'Publisher sources', 'Use arrow keys to select a row. Space toggles the selected source. Buttons below add, edit, remove, or reorder sources.')
         self.source_list.setHorizontalHeaderLabels(['Use', 'Publisher', 'Feed URL'])
         self.source_list.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -365,7 +388,7 @@ class DigestApp(QMainWindow):
         self.report_text = self.text_area('Selected article preview', 'Read-only article analysis. Links and extracted identifiers are available as text.')
         self.report_text.setMinimumHeight(300)
         body.addWidget(self.report_text)
-        self.set_text(self.report_text, 'Use Test AI or Preview batch to create a preview.')
+        self.set_text(self.report_text, 'Use Test AI or Preview to create a preview.')
         page.addStretch()
 
     def text_area(self, name, description):
@@ -734,11 +757,14 @@ class DigestApp(QMainWindow):
             self.status_message('Unable to read that connection file or provider.')
 
     def start(self, action):
+        if action in ('test', 'test-preview') and not self.test_mode.isChecked():
+            self.status_message('Enable Test mode to allow repeated and limited articles.')
+            return False
         if self.process or self.quit_pending or not self.save():
             return False
         value = self.settings
         error, field = None, self.webhook_entry
-        if action in ('batch', 'new', 'webhook') and not value['webhook']:
+        if action in ('test', 'new', 'webhook') and not value['webhook']:
             error = 'Add your Discord webhook URL first.'
         elif action not in ('feeds', 'webhook') and value['provider'] in KEY_ENV and not value['api_key']:
             error, field = 'Add the selected provider\'s AI API key first.', self.key_entry
@@ -751,10 +777,9 @@ class DigestApp(QMainWindow):
             field.setFocus()
             self.status_message(error)
             return False
-        if action in ('batch', 'preview') and value['batch_size'] > sum(s.get('enabled', True) for s in self.sources):
-            self.status_message('Enable more sources or lower the number of articles per run.')
-            self.tabs.setCurrentIndex(0)
-            self.batch_size.setFocus()
+        if action != 'webhook' and not any(s.get('enabled', True) for s in self.sources):
+            self.status_message('Enable at least one publisher in Sources.')
+            self.tabs.setCurrentIndex(2)
             return False
         try:
             (self.root / 'activity.log').write_text('', encoding='utf-8')

@@ -121,11 +121,37 @@ class GuiTests(unittest.TestCase):
 
     def test_missing_connection_focuses_field_and_does_not_start_worker(self):
         with patch('osint_digest.desktop.ui.subprocess.Popen') as launch:
-            self.assertFalse(self.app.start('batch'))
+            self.assertFalse(self.app.start('new'))
         launch.assert_not_called()
         self.assertEqual(self.app.tabs.currentIndex(), 1)
         self.assertIn('webhook', self.app.status.text())
         self.assertIs(_QAPP.focusWidget(), self.app.webhook_entry)
+
+    def test_test_mode_is_opt_in_accessible_and_manual_only(self):
+        app = self.app
+        self.assertFalse(app.test_mode.isChecked())
+        self.assertFalse(app.batch_size.isEnabled())
+        self.assertIn('no article limit', app.test_status.text())
+        with patch.object(app, 'start', return_value=True) as start:
+            app.send_button.click()
+            self.assertEqual(start.call_args.args, ('new',))
+            app.preview_button.click()
+            self.assertEqual(start.call_args.args, ('preview',))
+            app.test_mode.setChecked(True)
+            self.assertTrue(app.batch_size.isEnabled())
+            interface = QAccessible.queryAccessibleInterface(app.send_button)
+            self.assertEqual(interface.text(QAccessible.Text.Name), 'Send test articles')
+            app.send_button.click()
+            self.assertEqual(start.call_args.args, ('test',))
+            app.preview_button.click()
+            self.assertEqual(start.call_args.args, ('test-preview',))
+            app.toggle_monitor()
+            self.assertEqual(start.call_args.args, ('new',))
+        app.test_mode.setChecked(False)
+        with patch('osint_digest.desktop.ui.subprocess.Popen') as launch:
+            self.assertFalse(app.start('test'))
+            launch.assert_not_called()
+
 
     def test_tray_close_preserves_checks_and_restore(self):
         app = self.app

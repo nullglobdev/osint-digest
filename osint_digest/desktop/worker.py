@@ -6,7 +6,7 @@ import urllib.request
 from osint_digest.core import collector as bot
 from osint_digest.desktop.settings import initialize, load_settings, apply_environment
 
-ACTIONS = ('feeds', 'ai', 'preview', 'batch', 'new', 'webhook')
+ACTIONS = ('feeds', 'ai', 'preview', 'test', 'test-preview', 'new', 'webhook')
 
 
 class RedactedLog:
@@ -48,9 +48,10 @@ def run_worker(root, action):
                 print('Discord connection verified. No test message was sent.')
                 return 0
             flags = {'feeds': ['--check-feeds'], 'ai': ['--test-ai'],
-                     'preview': ['--batch', str(settings['batch_size']), '--dry-run'],
-                     'batch': ['--batch', str(settings['batch_size'])],
-                     'new': ['--max-posts', str(settings['batch_size'])]}[action]
+                     'preview': ['--dry-run'],
+                     'test-preview': ['--test-mode', '--max-posts', str(settings['batch_size']), '--dry-run'],
+                     'test': ['--test-mode', '--max-posts', str(settings['batch_size'])],
+                     'new': []}[action]
             old_args = sys.argv
             try:
                 sys.argv = ['bot.py', *flags]

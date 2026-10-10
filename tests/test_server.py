@@ -117,7 +117,8 @@ class ServerTests(unittest.TestCase):
         original_root = bot.ROOT
         with patch.object(bot, 'run', return_value=0) as run, patch.object(bot, 'load_env') as env, redirect_stdout(io.StringIO()):
             self.assertEqual(server.run_action(self.root, 'preview'), 0)
-            self.assertEqual(run.call_args.args[0].batch, 1)
+            self.assertIsNone(run.call_args.args[0].max_posts)
+            self.assertFalse(run.call_args.args[0].test_mode)
             self.assertTrue(run.call_args.args[0].dry_run)
             self.assertEqual(run.call_args.kwargs['sources'], [SOURCE])
             env.assert_not_called()
@@ -138,6 +139,27 @@ class ServerTests(unittest.TestCase):
             send.assert_not_called()
         self.assertEqual((self.root / 'state/state.json').read_bytes(), original)
         self.assertEqual(len(list((self.root / 'preview').glob('*.json'))), 1)
+
+    def test_repeat_and_limit_require_explicit_test_mode(self):
+        self.configure(webhook=WEBHOOK, sources=[SOURCE], max_posts=10)
+        with patch.object(bot, 'run', return_value=0) as run, redirect_stdout(io.StringIO()):
+            for action, count in [('batch', None), ('new', 2), ('preview', 1)]:
+                with self.assertRaisesRegex(settings.SettingsError, '--test-mode'):
+                    server.run_action(self.root, action, count=count)
+            run.assert_not_called()
+            self.assertEqual(server.run_action(self.root, 'new', test_mode=True), 0)
+            self.assertTrue(run.call_args.args[0].test_mode)
+            self.assertEqual(run.call_args.args[0].max_posts, 10)
+            self.assertEqual(server.run_action(self.root, 'new'), 0)
+            self.assertFalse(run.call_args.args[0].test_mode)
+            self.assertIsNone(run.call_args.args[0].max_posts)
+
+    def test_menu_test_mode_applies_only_to_selected_manual_task(self):
+        with patch('builtins.input', side_effect=['9', '3', '2', '10', '0']), patch.object(server, 'run_action', return_value=0) as run, redirect_stdout(io.StringIO()):
+            server_setup.administer(self.root, 'settings')
+        self.assertEqual(run.call_args_list[0].kwargs, {'count': 3, 'test_mode': True})
+        self.assertEqual(run.call_args_list[1].args, (self.root, 'new'))
+        self.assertEqual(run.call_args_list[1].kwargs, {})
 
     def test_busy_worker_blocks_second_action_and_backup(self):
         with settings.file_lock(self.root / '.run.lock'):
@@ -165,6 +187,8 @@ class ServerTests(unittest.TestCase):
         with patch.object(stop, 'wait', side_effect=wait), patch.object(server, 'run_action', side_effect=run), redirect_stdout(io.StringIO()):
             self.assertEqual(server.serve(self.root, stop), 0)
         self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][0], (self.root, 'new'))
+        self.assertFalse(calls[0][1].get('test_mode', False))
         state = json.loads((self.root / 'runtime.json').read_text())
         self.assertEqual(state['phase'], 'stopped')
         self.assertEqual(state['last_exit_code'], 1)

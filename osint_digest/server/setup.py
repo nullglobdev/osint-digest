@@ -100,16 +100,16 @@ def connection(config):
 
 
 def schedule(config):
-    config['max_posts'] = number('Articles per run', config['max_posts'], 1, 20)
+    config['max_posts'] = number('Article limit for manual tests only', config['max_posts'], 1, 20)
     config['interval_minutes'] = number('Check every (minutes)', config['interval_minutes'], 15, 360)
-    print('Automatic checks send new articles and retries. The first successful check creates a quiet baseline.')
+    print('Automatic checks read every enabled source and send all unsent articles and due retries, including on the first run.')
     config['enabled'] = yes('Enable automatic checks?', config['enabled'])
 
 
 def sources_menu(config):
     sources = config['sources']
     while True:
-        print('\nSources (order determines which publishers a latest batch uses):')
+        print('\nSources (every enabled source is checked; order sets test sampling priority):')
         for index, source in enumerate(sources, 1):
             print(f"{index}. {'ON ' if source.get('enabled', True) else 'OFF'} {source['name']} | {source['feed']}")
         print('a Add | e Edit | t Enable/disable | m Move | r Remove | 0 Done')
@@ -167,7 +167,7 @@ def administer(root, command):
         return
     from osint_digest.server.app import run_action, show_status, backup
     while True:
-        print('\nOSINT Digest settings\n1 Connection and AI\n2 Schedule and article limit\n3 Sources\n4 Models\n5 Show status\n6 Check feeds\n7 Test AI (local preview)\n8 Preview latest batch\n9 Send latest batch to Discord (can repeat posts)\n10 Check and send new\n11 Check Discord connection (no message)\n12 Back up settings and history\n0 Exit')
+        print('\nOSINT Digest settings\n1 Connection and AI\n2 Schedule and test article limit\n3 Sources\n4 Models\n5 Show status\n6 Check feeds\n7 Test AI (local preview)\n8 Preview all unsent articles\n9 Test mode (limited articles; repeats allowed)\n10 Check all sources and send unsent articles\n11 Check Discord connection (no message)\n12 Back up settings and history\n0 Exit')
         choice = prompt('Choice', '0')
         try:
             if choice == '0':
@@ -178,10 +178,16 @@ def administer(root, command):
                 show_status(root)
             elif choice == '12':
                 backup(root)
-            elif choice in ('6', '7', '8', '9', '10', '11'):
-                action = {'6': 'check-feeds', '7': 'test-ai', '8': 'preview', '9': 'batch', '10': 'new', '11': 'test-discord'}[choice]
-                if action == 'batch' and not yes('Send this latest batch now, including articles previously sent?'):
-                    continue
+            elif choice == '9':
+                print('Test mode applies to this task only. Automatic checks always send unsent articles.')
+                config, _ = load_config(root)
+                count = number('Test article limit', config['max_posts'], 1, 20)
+                task = prompt('1 Preview locally | 2 Send to Discord | 0 Cancel', '1')
+                if task in ('1', '2'):
+                    code = run_action(root, 'preview' if task == '1' else 'new', count=count, test_mode=True)
+                    print(f'Test finished (exit code {code}).')
+            elif choice in ('6', '7', '8', '10', '11'):
+                action = {'6': 'check-feeds', '7': 'test-ai', '8': 'preview', '10': 'new', '11': 'test-discord'}[choice]
                 code = run_action(root, action)
                 print(f'Command finished (exit code {code}).')
             else:

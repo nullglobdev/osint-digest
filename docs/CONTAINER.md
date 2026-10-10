@@ -4,22 +4,22 @@ The container edition runs the same collector as the Windows desktop app, with t
 
 ## First-time setup
 
-Download and extract `OSINTDigest-Server-1.0.0.tar.gz` from the [server release](https://github.com/ry304/osint-digest/releases/tag/server-v1.0.0), or clone this repository using your normal GitHub credentials. The repository and downloads are private, so your account needs access. Do not put a GitHub token in a clone URL or command history.
+Clone this repository for the current source, or download a published server bundle from [GitHub Releases](https://github.com/nullglobdev/osint-digest/releases). The bundle builder produces `OSINTDigest-Server-1.1.0.tar.gz` for this source version.
 
 ```sh
-git clone https://github.com/ry304/osint-digest.git
+git clone https://github.com/nullglobdev/osint-digest.git
 cd osint-digest
 sh scripts/server.sh setup
 ```
 
-For the downloaded bundle, extract it with `tar -xzf OSINTDigest-Server-1.0.0.tar.gz`, enter `OSINTDigest-Server-1.0.0`, and run the same setup command.
+For the downloaded bundle, extract it with `tar -xzf OSINTDigest-Server-1.1.0.tar.gz`, enter `OSINTDigest-Server-1.1.0`, and run the same setup command.
 
 The script builds the image and opens the setup wizard. No Python installation is needed on the server. The wizard walks through:
 
 1. Discord webhook, entered with hidden terminal input.
 2. Google Gemini, OpenAI, Anthropic Claude, Ollama, or publisher excerpts without AI.
 3. The selected provider's API key and model. You can load models from the provider, page through the choices, or enter a model ID. Keys and models are retained separately for each provider. OpenAI/Claude require an explicit usage-billing opt-in.
-4. Article limit (1–20) and check interval (15–360 minutes).
+4. Manual test article limit (1–20) and normal check interval (15–360 minutes).
 5. Whether automatic checks should be enabled, and optional source changes.
 
 Start the background service after saving:
@@ -30,7 +30,9 @@ sh scripts/server.sh status
 sh scripts/server.sh logs
 ```
 
-Automatic checks start only if you enabled them in setup. A fresh profile starts paused. The first successful check for each publisher creates a quiet baseline; later checks send new articles and due retries. To send five or ten current articles immediately, use the explicit batch command below. Closing your SSH session does not stop the container. Docker must be running and the server must stay awake and online.
+Automatic checks start only if you enabled them in setup. A fresh profile starts paused. Every cycle checks all enabled sources and processes all unsent articles and due retries, without an article-count cap. Successfully delivered URLs are skipped across restarts. Closing your SSH session does not stop the container. Docker must be running and the server must stay awake and online.
+
+The first normal run sends all available unsent feed articles. After an upgrade, older quiet-baseline articles also become eligible if still in a feed, because they were never delivered. Existing successful delivery history is preserved. Use a preview or limited test to review the output first.
 
 You can use the Compose commands directly, including from PowerShell with Docker Desktop in Linux-container mode:
 
@@ -50,7 +52,7 @@ sh scripts/server.sh sources
 sh scripts/server.sh models
 ```
 
-The settings menu includes connection/provider configuration, scheduling, source management, model discovery, status, preview/testing, delivery actions, and backup. The Sources menu can add/edit HTTPS RSS/Atom feeds, enable or disable publishers, remove them, and reorder batch priority. Include exact allowed hostnames for article links and redirects; the feed hostname is included automatically. Existing publisher names stay fixed so their delivery history remains associated correctly.
+The settings menu includes connection/provider configuration, scheduling, source management, model discovery, status, preview/testing, delivery actions, and backup. The Sources menu can add/edit HTTPS RSS/Atom feeds, enable or disable publishers, remove them, and reorder test sampling priority. Include exact allowed hostnames for article links and redirects; the feed hostname is included automatically. Existing publisher names stay fixed so their delivery history remains associated correctly.
 
 Changes save to the data volume and are noticed by the service within a few seconds while idle. An active task keeps its original configuration until it finishes. Pausing automatic checks prevents subsequent runs. Concurrent editing sessions cannot silently overwrite one another. Changes do not require an image rebuild or container restart.
 
@@ -64,14 +66,15 @@ Windows settings use Windows account encryption and are not directly portable to
 | `sh scripts/server.sh test-discord` | Verify the webhook using a read-only request; no message |
 | `sh scripts/server.sh test-ai` | Summarize one article and save a local preview; no Discord message |
 | `sh scripts/server.sh test-ai --source Huntress` | Test AI using a particular configured source |
-| `sh scripts/server.sh preview --count 5` | Preview the latest article from each of the first five enabled sources |
-| `sh scripts/server.sh batch --count 5` | Send the latest article from each of the first five enabled sources |
-| `sh scripts/server.sh batch --count 10` | Send a batch from the first ten enabled sources |
-| `sh scripts/server.sh new --count 10` | Check all enabled sources and attempt up to ten new/pending articles |
+| `sh scripts/server.sh new` | Check all enabled sources and send all unsent articles and due retries |
+| `sh scripts/server.sh preview` | Preview all eligible unsent articles without posting or changing history |
+| `sh scripts/server.sh preview --test-mode --count 5` | Check all feeds and preview up to five articles, including repeats |
+| `sh scripts/server.sh new --test-mode --count 5` | Check all feeds and send up to five articles, including repeats |
+| `sh scripts/server.sh new --test-mode --count 10` | Run a manual test with up to ten articles, including repeats |
 
-AI tests and previews use the configured provider's quota. Latest batches deliberately include previously sent articles. Routine monitoring uses new/pending mode and preserves deduplication and retry history. If the service is currently collecting, another task returns “Another operation is using this data folder”; retry after it finishes or pause automatic checks in Settings first. There is one collector at a time per data volume.
+AI tests and previews use the configured provider's quota. **Test mode is manual only:** it checks all feeds, samples first entries across publishers before taking second entries, and permits repeats up to the limit. Successful test deliveries update history; failed tests leave normal retries unchanged. Automatic checks always use normal deduplication with no article limit. `--count` and the legacy `batch` command require `--test-mode`. If the service is currently collecting, another task returns “Another operation is using this data folder”; retry after it finishes or pause automatic checks in Settings first. There is one collector at a time per data volume.
 
-Equivalent direct commands are `docker compose run --rm -T digest preview --count 5`, and so on. The interactive settings menu supplies the saved article limit for its task shortcuts.
+Equivalent direct commands are `docker compose run --rm -T digest new` or `docker compose run --rm -T digest preview --test-mode --count 5`. In Settings, choose **Test mode** to select a count and preview or send a single test. The saved test limit defaults to 5; existing `max_posts` settings are retained as test limits only.
 
 ## Ollama connectivity
 

@@ -54,7 +54,7 @@ class DesktopTests(unittest.TestCase):
                 settings.validate({**settings.DEFAULTS, 'webhook': url})
             self.assertNotIn('secret', str(error.exception))
 
-    def test_worker_batch_routes_count_and_redacts_credentials(self):
+    def test_worker_test_mode_routes_count_and_redacts_credentials(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ):
             root = Path(tmp)
             settings.initialize(root)
@@ -62,12 +62,12 @@ class DesktopTests(unittest.TestCase):
                      'api_key': 'private-gemini-secret', 'batch_size': 10}
             settings.save_settings(root, value)
             def main():
-                self.assertEqual(worker.sys.argv, ['bot.py', '--batch', '10'])
+                self.assertEqual(worker.sys.argv, ['bot.py', '--test-mode', '--max-posts', '10'])
                 self.assertEqual(worker.bot.ROOT, root)
                 print(value['webhook'], value['api_key'])
                 return 0
             with patch.object(worker.bot, 'ROOT', root), patch.object(worker.bot, 'main', side_effect=main):
-                self.assertEqual(worker.run_worker(root, 'batch'), 0)
+                self.assertEqual(worker.run_worker(root, 'test'), 0)
             log = (root / 'activity.log').read_text()
             self.assertIn('[hidden]', log)
             self.assertNotIn('test-secret', log)
@@ -84,6 +84,21 @@ class DesktopTests(unittest.TestCase):
                 self.assertEqual(worker.run_worker(root, 'webhook'), 0)
                 self.assertIsNone(request.call_args.args[0].data)
                 send.assert_not_called()
+
+    def test_worker_normal_actions_have_no_limit_or_repeat_flags(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, MAX_POSTS='1'):
+            root = Path(tmp)
+            settings.initialize(root)
+            calls = []
+            def main():
+                calls.append(worker.sys.argv[:])
+                self.assertNotIn('MAX_POSTS', os.environ)
+                return 0
+            with patch.object(worker.bot, 'ROOT', root), patch.object(worker.bot, 'main', side_effect=main):
+                for action in ('new', 'preview', 'test-preview'):
+                    self.assertEqual(worker.run_worker(root, action), 0)
+            self.assertEqual(calls, [['bot.py'], ['bot.py', '--dry-run'],
+                                     ['bot.py', '--test-mode', '--max-posts', '5', '--dry-run']])
 
 if __name__ == '__main__':
     unittest.main()

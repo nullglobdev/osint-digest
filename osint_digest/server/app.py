@@ -45,19 +45,21 @@ class RedactedStream:
         self.stream.flush()
 
 
-def run_action(root, action, count=None, source='*', stop=None):
+def run_action(root, action, count=None, source='*', stop=None, *, test_mode=False):
     if action not in ACTIONS:
         raise SettingsError('Unknown collector action.')
+    if (count is not None or action == 'batch') and not test_mode:
+        raise SettingsError('Limited or repeat articles require --test-mode. Use new for all unsent articles.')
+    if test_mode and action not in ('new', 'batch', 'preview'):
+        raise SettingsError('Test mode applies only to new, preview, or batch.')
     stop = stop or threading.Event()
     # Shares the collector lock with other server commands using this volume.
     with file_lock(root / '.run.lock'):
         config, _ = load_config(root)
         require_ready(config, action)
-        count = config['max_posts'] if count is None else count
-        if not 1 <= count <= 20:
+        count = (config['max_posts'] if count is None else count) if test_mode else None
+        if count is not None and not 1 <= count <= 20:
             raise SettingsError('Article count must be between 1 and 20.')
-        if action in ('batch', 'preview') and count > sum(s.get('enabled', True) for s in config['sources']):
-            raise SettingsError('Enable more sources or lower the article count.')
         previous_root = bot.ROOT
         try:
             bot.ROOT = root
@@ -72,9 +74,9 @@ def run_action(root, action, count=None, source='*', stop=None):
                 else:
                     args = argparse.Namespace(check_feeds=action == 'check-feeds',
                         test_ai=source if action == 'test-ai' else None, dry_run=action == 'preview',
-                        batch=count if action in ('preview', 'batch') else None, backfill=0, max_posts=count)
+                        test_mode=test_mode, max_posts=count)
                     code = bot.run(args, sources=config['sources'], stop_requested=stop.is_set)
-                atomic_json(root / 'last-run.json', {'action': action, 'finished_at': utc(),
+                atomic_json(root / 'last-run.json', {'action': action, 'test_mode': test_mode, 'finished_at': utc(),
                                                      'exit_code': code, 'stopped': stop.is_set()})
                 log(f'{action} finished with exit code {code}.')
                 return code
@@ -175,7 +177,8 @@ def show_status(root):
     profile = config['profiles'].get(config['provider'], {})
     print('OSINT Digest server')
     print(f"Automatic checks: {'enabled' if config['enabled'] else 'paused'}")
-    print(f"Interval: {config['interval_minutes']} minutes | Article limit: {config['max_posts']}")
+    print(f"Interval: {config['interval_minutes']} minutes | Test article limit: {config['max_posts']}")
+    print('Normal checks: all enabled sources, all unsent articles. Test mode is manual only.')
     print(f"Provider: {config['provider']} | Model: {profile.get('model') or '(none)'}")
     print(f"Discord webhook: {'saved' if config['webhook'] else 'not configured'} | AI key: {'saved' if profile.get('api_key') else 'not configured'}")
     print(f"Sources: {sum(s.get('enabled', True) for s in config['sources'])} enabled / {len(config['sources'])} total")
@@ -204,7 +207,8 @@ def main(argv=None):
     for action in ('serve', 'setup', 'settings', 'sources', 'models', 'status', 'health', 'backup', *ACTIONS):
         command = commands.add_parser(action)
         if action in ('batch', 'preview', 'new'):
-            command.add_argument('--count', type=int, help='Article limit, 1-20; defaults to saved settings')
+            command.add_argument('--test-mode', action='store_true', help='Allow repeats in a limited manual test')
+            command.add_argument('--count', type=int, help='Test article limit, 1-20; requires --test-mode')
         if action == 'test-ai':
             command.add_argument('--source', default='*', help='Optional publisher name')
     args = parser.parse_args(argv)
@@ -233,7 +237,8 @@ def main(argv=None):
         elif args.command == 'backup':
             backup(root)
         else:
-            return run_action(root, args.command, getattr(args, 'count', None), getattr(args, 'source', '*'), stop)
+            return run_action(root, args.command, getattr(args, 'count', None), getattr(args, 'source', '*'), stop,
+                              test_mode=getattr(args, 'test_mode', False))
         return 0
     except BusyError as error:
         print(str(error), file=sys.stderr)

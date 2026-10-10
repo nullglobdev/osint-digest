@@ -29,7 +29,6 @@ jobs:
           AI_PROVIDER: ${{ vars.AI_PROVIDER || 'none' }}
           AI_MODEL: ${{ vars.AI_MODEL }}
           ALLOW_PAID_AI: ${{ vars.ALLOW_PAID_AI || 'false' }}
-          MAX_POSTS: '5'
         run: python bot.py
       - name: Persist delivery and retry state even after a partial failure
         if: always()

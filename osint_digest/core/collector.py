@@ -472,30 +472,29 @@ def save_state(path, state):
     temp.replace(path)
 
 
-def discover(source, state, backfill, getter=fetch):
+def discover(source, state, getter=None):
+    """Queue every available unsent article; only confirmed deliveries deduplicate."""
+    getter = getter or fetch
     f = state['feeds'].setdefault(source['name'], {})
     headers = {}
-    if f.get('etag'):
+    # Re-read legacy baselines once: those articles were observed, never sent.
+    if f.get('delivery_only') and f.get('etag'):
         headers['If-None-Match'] = f['etag']
-    if f.get('modified'):
+    if f.get('delivery_only') and f.get('modified'):
         headers['If-Modified-Since'] = f['modified']
     status, raw, h, _ = getter(source['feed'], source['hosts'], headers)
     if status == 304:
         f['last_success'], f['error'] = now(), None
         return 0
     entries = parse_feed(raw, source)
-    first = not f.get('initialized')
     added = 0
-    for index, item in enumerate(entries):
+    for item in entries:
         key = item['url']
-        if key in state['seen'] or key in state['pending']:
+        if state['seen'].get(key, {}).get('status') == 'sent' or key in state['pending']:
             continue
-        if first and index >= backfill:
-            state['seen'][key] = {'status': 'baseline', 'at': now()}
-        else:
-            state['pending'][key] = item
-            added += 1
-    f.update(initialized=True, etag=h.get('ETag') or h.get('Etag'),
+        state['pending'][key] = item
+        added += 1
+    f.update(initialized=True, delivery_only=True, etag=h.get('ETag') or h.get('Etag'),
              modified=h.get('Last-Modified'), last_success=now(), error=None)
     return added
 
@@ -585,42 +584,52 @@ def run(args, sources=None, stop_requested=None):
     path = ROOT / 'state' / 'state.json'
     state = json.loads(path.read_text()) if path.exists() else {'feeds': {}, 'seen': {}, 'pending': {}}
     errors = 0
-    batch = getattr(args, 'batch', None)
-    if batch is not None:
-        if not 1 <= batch <= min(20, len(sources)):
-            print(f'Batch size must be 1-{min(20, len(sources))}, one article per enabled source.')
-            return 1
-        print(f'BATCH: first {batch} enabled sources; latest feed entry from each. Previously sent articles will be sent again.', flush=True)
-        due = []
+    test_mode = getattr(args, 'test_mode', False)
+    limit = getattr(args, 'batch', None)
+    if limit is None:
+        limit = getattr(args, 'max_posts', None)
+    if limit is not None and not test_mode:
+        raise ValueError('Article limits and repeats require --test-mode')
+    if test_mode:
+        limit = 5 if limit is None else limit
+        if not 1 <= limit <= 20:
+            raise ValueError('Test article limit must be 1-20')
+        print(f'TEST MODE: checking all {len(sources)} enabled sources; up to {limit} articles, including previously sent articles.', flush=True)
+        candidates = []
         selected = set()
-        for source in sources[:batch]:
-            if stop_requested():
-                break
-            try:
-                # Bypass conditional requests and delivery history for this explicit batch.
-                _, raw, _, _ = fetch(source['feed'], source['hosts'])
-                entry = parse_feed(raw, source)[0]
-                key = entry['url']
-                if key in selected:
-                    continue
-                selected.add(key)
-                repeat = state['seen'].get(key, {}).get('status') == 'sent'
-                pending = {**state['pending'].get(key, {}), **entry}
-                pending.pop('retry_after', None)
-                state['pending'][key] = pending
-                due.append(pending)
-                print(f"SELECTED {source['name']}: {entry['title']}" + (' (resend)' if repeat else ''), flush=True)
-            except Exception as error:
-                errors += 1
-                print(f"WARNING feed from {source['name']}: {error_label(error)}", flush=True)
-            if not args.dry_run:
-                save_state(path, state)
-    else:
         for source in sources:
             if stop_requested():
                 break
             try:
-                n = discover(source, state, args.backfill)
+                # Test selections never enter the normal retry queue.
+                _, raw, _, _ = fetch(source['feed'], source['hosts'])
+                candidates.append(parse_feed(raw, source))
+            except Exception as error:
+                errors += 1
+                print(f"WARNING feed from {source['name']}: {error_label(error)}", flush=True)
+        # Sample across publishers before taking a second article from any feed.
+        due = []
+        for index in range(max(map(len, candidates), default=0)):
+            for entries in candidates:
+                if index < len(entries) and entries[index]['url'] not in selected:
+                    entry = entries[index]
+                    selected.add(entry['url'])
+                    due.append(entry)
+                    if len(due) == limit:
+                        break
+            if len(due) == limit:
+                break
+    else:
+        print(f'Checking all {len(sources)} enabled sources; sending all unsent articles and due retries.', flush=True)
+        # Repair stale retries left by older repeat-batch runs. Never resend these
+        # during routine monitoring, even if the feed no longer contains them.
+        state['pending'] = {url: entry for url, entry in state['pending'].items()
+                            if state['seen'].get(url, {}).get('status') != 'sent'}
+        for source in sources:
+            if stop_requested():
+                break
+            try:
+                n = discover(source, state)
                 print(f"{source['name']}: {n} queued")
             except Exception as e:
                 errors += 1
@@ -629,11 +638,10 @@ def run(args, sources=None, stop_requested=None):
             if not args.dry_run:
                 save_state(path, state)
     by_name = {s['name']: s for s in sources}
-    if batch is None:
+    if not test_mode:
         due = [x for x in state['pending'].values() if x['source'] in by_name and x.get('retry_after', 0) <= time.time()]
         # Stable oldest-discovered first; pending items survive RSS window expiry.
         due.sort(key=lambda x: (x['discovered'], x['url']))
-        due = due[:args.max_posts]
     completed = 0
     ai_summaries = 0
     for index, entry in enumerate(due, 1):
@@ -655,18 +663,20 @@ def run(args, sources=None, stop_requested=None):
             else:
                 message_id = send_discord(report)
                 state['seen'][entry['url']] = {'status': 'sent', 'at': now(), 'message_id': message_id}
-                del state['pending'][entry['url']]
+                state['pending'].pop(entry['url'], None)
                 save_state(path, state)
                 print(f"POSTED {entry['source']}")
             completed += 1
             ai_summaries += bool(report['analysis'])
         except Exception as e:
             errors += 1
-            entry['attempts'] = entry.get('attempts', 0) + 1
-            entry['retry_after'] = time.time() + min(86400, 1800 * 2 ** min(entry['attempts'], 5))
-            entry['last_error'] = type(e).__name__
-            print(f"WARNING article from {entry['source']}: {error_label(e)}; retained for retry")
-            if not args.dry_run:
+            if not test_mode:
+                entry['attempts'] = entry.get('attempts', 0) + 1
+                entry['retry_after'] = time.time() + min(86400, 1800 * 2 ** min(entry['attempts'], 5))
+                entry['last_error'] = type(e).__name__
+            retry_note = 'test failed; normal retry queue unchanged' if test_mode else 'retained for retry'
+            print(f"WARNING article from {entry['source']}: {error_label(e)}; {retry_note}")
+            if not args.dry_run and not test_mode:
                 save_state(path, state)
     print(f"{'Previewed' if args.dry_run else 'Posted'}: {completed}; AI summaries: {ai_summaries}; excerpts: {completed - ai_summaries}")
     print(f"Pending: {len(state['pending'])}; source/article errors: {errors}")
@@ -687,17 +697,22 @@ def main():
     parser.add_argument('--check-feeds', action='store_true', help='Read-only feed diagnostics; no AI or Discord')
     parser.add_argument('--test-ai', nargs='?', const='*', metavar='SOURCE',
                         help='Test configured AI on the latest article, even if already sent; optional source name. Local preview only; no Discord or state writes')
-    parser.add_argument('--backfill', type=int, default=0, help='On first discovery only, queue first N feed entries per source; default baseline only')
+    parser.add_argument('--test-mode', action='store_true', help='Allow repeat articles in a limited manual test; checks all enabled feeds')
     parser.add_argument('--batch', type=int, metavar='N',
-                        help='Process latest entry from each of the first N enabled sources, including previously sent articles. N sets the post limit; --dry-run previews instead')
-    parser.add_argument('--max-posts', type=int, default=int(os.getenv('MAX_POSTS', '5')))
+                        help='Legacy alias for --max-posts; requires --test-mode')
+    parser.add_argument('--max-posts', type=int, metavar='N', help='Test article limit, 1-20 (default 5); requires --test-mode')
     args = parser.parse_args()
     if args.test_ai and args.check_feeds:
         parser.error('--test-ai cannot be combined with --check-feeds')
-    if args.batch is not None and (args.test_ai or args.check_feeds or args.backfill):
-        parser.error('--batch cannot be combined with --test-ai, --check-feeds or --backfill')
-    if args.backfill < 0 or not 1 <= args.max_posts <= 20:
-        parser.error('--backfill must be nonnegative; --max-posts must be 1-20')
+    if args.batch is not None and args.max_posts is not None:
+        parser.error('Use either --batch or --max-posts, not both')
+    if (args.batch is not None or args.max_posts is not None) and not args.test_mode:
+        parser.error('Article limits and repeats require --test-mode; normal runs send all unsent articles')
+    if args.test_mode and (args.test_ai or args.check_feeds):
+        parser.error('--test-mode cannot be combined with --test-ai or --check-feeds')
+    limit = args.batch if args.batch is not None else args.max_posts
+    if limit is not None and not 1 <= limit <= 20:
+        parser.error('Test article limit must be 1-20')
     try:
         # OS releases this lock on process exit/crash; prevents overlapping local timers.
         with (ROOT / '.run.lock').open('a+b') as lock:
