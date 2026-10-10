@@ -91,20 +91,6 @@ class SettingsTests(unittest.TestCase):
                 self.assertIn(endpoint, api.call_args.args[0])
                 self.assertIn('provider-secret', api.call_args.args[2][auth])
 
-    @unittest.skipUnless(find_spec('pystray') and find_spec('PIL'), 'Install requirements-desktop.txt to test the tray')
-    def test_real_windows_tray_starts_and_stops(self):
-        import queue
-        from desktop_tray import Tray
-        events = queue.Queue()
-        tray = Tray(events, settings.resource_path('assets/app.ico'))
-        try:
-            tray.start()
-            event, _ = events.get(timeout=8)
-            self.assertEqual(event, 'tray_ready')
-            self.assertTrue(tray.ready)
-        finally:
-            tray.stop()
-
     def test_legacy_gemini_migration_and_interval_cap_preserve_credentials(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -145,99 +131,6 @@ class SettingsTests(unittest.TestCase):
         for value in (14, 361):
             with self.assertRaises(ValueError):
                 settings.validate({**settings.DEFAULTS, 'interval_minutes': value})
-
-
-@unittest.skipUnless(os.name == 'nt', 'Desktop targets Windows')
-class GuiTests(unittest.TestCase):
-    def setUp(self):
-        import tkinter as tk
-        import desktop
-        self.temp = tempfile.TemporaryDirectory()
-        self.window = tk.Tk()
-        self.window.withdraw()
-        self.app = desktop.DigestApp(self.window, Path(self.temp.name))
-
-    def tearDown(self):
-        if self.window.winfo_exists():
-            self.app.process = None
-            self.app.close()
-        self.temp.cleanup()
-
-    def test_switch_provider_preserves_own_key_model_and_discards_stale_response(self):
-        app = self.app
-        app.variables['api_key'].set('gemini-secret')
-        app.variables['model'].set('gemini-saved')
-        with patch.object(app, 'refresh_models'):
-            app.provider.set('OpenAI')
-            app.provider_changed()
-            self.assertEqual(app.variables['api_key'].get(), '')
-            self.assertEqual(app.variables['model'].get(), '')
-            app.variables['api_key'].set('openai-secret')
-            app.variables['model'].set('gpt-saved')
-            app.events.put(('models', (('gemini', 'gemini-secret'), ['gemini-other'], None)))
-            app.handle_events()
-            self.assertEqual(app.variables['model'].get(), 'gpt-saved')
-            app.provider.set('Google Gemini')
-            app.provider_changed()
-        self.assertEqual(app.variables['api_key'].get(), 'gemini-secret')
-        self.assertEqual(app.variables['model'].get(), 'gemini-saved')
-        self.assertTrue(app.save())
-        loaded = settings.load_settings(app.root)
-        self.assertEqual(loaded['profiles']['openai']['model'], 'gpt-saved')
-
-    def test_add_reorder_disable_and_save_custom_source(self):
-        app = self.app
-        source = make_source('Custom', 'https://example.com/rss', 'www.example.com', app.sources)
-        app.sources.append(source)
-        app.rebuild_sources(len(app.sources) - 1)
-        app.move_source(-1)
-        app.toggle_source()
-        self.assertTrue(app.save())
-        loaded = json.loads((app.root / 'sources.json').read_text())
-        self.assertEqual(loaded[-2]['name'], 'Custom')
-        self.assertFalse(loaded[-2]['enabled'])
-
-    def test_tray_hides_only_after_ready_and_preserves_monitoring(self):
-        app = self.app
-        self.window.deiconify()
-        self.window.update_idletasks()
-        app.monitoring = True
-        with patch('desktop.Tray') as tray:
-            tray.return_value.ready = False
-            app.on_window_close()
-            self.assertNotEqual(self.window.state(), 'withdrawn')
-            tray.return_value.start.assert_called_once()
-            app.events.put(('tray_ready', None))
-            app.handle_events()
-            self.assertEqual(self.window.state(), 'withdrawn')
-            self.assertTrue(app.monitoring)
-            app.events.put(('show', None))
-            app.handle_events()
-            self.assertNotEqual(self.window.state(), 'withdrawn')
-            self.assertTrue(app.monitoring)
-
-    def test_exit_finishes_active_worker_and_stops_future_checks(self):
-        app = self.app
-        app.process = Mock()
-        app.monitoring = True
-        app.close()
-        self.assertTrue(app.quit_pending)
-        self.assertFalse(app.monitoring)
-        self.assertTrue(self.window.winfo_exists())
-        app.process.terminate.assert_not_called()
-        self.assertFalse(app.start('new'))
-
-    def test_dynamic_model_choices_and_api_failure_leave_saved_model(self):
-        app = self.app
-        app.variables['api_key'].set('gemini-secret')
-        app.variables['model'].set('gemini-saved')
-        app.events.put(('models', (('gemini', 'gemini-secret'), ['gemini-new', 'gemini-saved'], None)))
-        app.handle_events()
-        self.assertEqual(app.model_combo['values'], ('gemini-new', 'gemini-saved'))
-        app.events.put(('models', (('gemini', 'gemini-secret'), [], 'HTTPError HTTP 401')))
-        app.handle_events()
-        self.assertEqual(app.variables['model'].get(), 'gemini-saved')
-        self.assertIn('401', app.model_status.get())
 
 
 if __name__ == '__main__':

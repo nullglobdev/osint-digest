@@ -13,10 +13,10 @@ from urllib.parse import urlsplit
 from desktop_ai import PROVIDERS, KEY_ENV
 
 APP_NAME = 'OSINT Digest'
-VERSION = '1.1.0'
+VERSION = '1.2.0'
 DEFAULTS = {'provider': 'gemini', 'model': 'gemini-3.1-flash-lite',
             'webhook': '', 'api_key': '', 'batch_size': 5, 'interval_minutes': 60,
-            'close_to_tray': True, 'profiles': {}}
+            'close_to_tray': True, 'profiles': {}, 'theme': 'dark', 'text_scale': 100}
 SECRET_KEYS = ('webhook', 'api_key')
 
 
@@ -71,6 +71,10 @@ def unprotect(value):
 
 
 def validate(settings):
+    if settings.get('theme', 'dark') not in ('dark', 'light', 'system'):
+        raise ValueError('Choose Dark, Light, or Windows theme.')
+    if int(settings.get('text_scale', 100)) not in (100, 125, 150, 175, 200):
+        raise ValueError('Choose a text size between 100% and 200%.')
     if settings['provider'] not in PROVIDERS.values():
         raise ValueError('Choose a summary provider from the list.')
     if settings['webhook']:
@@ -121,7 +125,7 @@ def load_settings(root):
 def save_settings(root, settings):
     validate(settings)
     data = {k: settings[k] for k in DEFAULTS if k not in (*SECRET_KEYS, 'profiles')}
-    data['schema_version'] = 2
+    data['schema_version'] = 3
     data['webhook_protected'] = protect(settings['webhook'])
     profiles = {**settings.get('profiles', {}), settings['provider']: {
         'model': settings['model'], 'api_key': settings['api_key']}}

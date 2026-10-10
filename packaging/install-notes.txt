@@ -9,4 +9,5 @@ After installation, open Connection to enter your webhook and key, then Preview 
 
 Add your own RSS/Atom sources in Sources. Automatic checks support intervals of 15 to 360 minutes.
 The app can run in the system tray while your PC is awake. Use Exit to stop it completely.
+Version 1.2 adds rounded navy styling, Dark/Light/Windows themes, text scaling, keyboard controls, and screen-reader metadata. See ACCESSIBILITY.md for tested features and remaining manual Section 508 validation.
 Settings and delivery history are saved under your Windows account. Uninstalling the app preserves that data.

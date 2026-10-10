@@ -1,6 +1,17 @@
 # Validation record
 
-Checked in the build environment on October 9, 2026 UTC.
+Desktop 1.2 was checked on October 9, 2026 (America/New_York). Earlier validation dates are retained below.
+
+## Desktop 1.2.0 interface update
+
+- All 52 offline tests passed in the pinned Windows build environment. The Qt interface preserves provider credentials, model discovery, source configuration, worker routing, scheduling, and tray behavior.
+- New widget tests check keyboard navigation, section shortcuts, source toggling, accessible names/roles and password/disabled states, changing Start/Stop button names, text enlargement to 200%, focus scrolling at 640 x 480, and pausing log updates even when a new task starts. Appearance changes save without committing unfinished connection edits.
+- Both navy/dark and light palettes pass automated checks for text contrast of at least 4.5:1 and control/focus boundaries against their surrounding surfaces of at least 3:1. Windows contrast-theme override logic is tested with a mocked platform preference.
+- Rendered offscreen previews of all four sections in both themes and an enlarged-text view were inspected. These are Qt-rendered artifacts, not captures of the running Windows desktop. The review found and corrected font sizing and scrolling issues.
+- Portable and installed 1.2 executables passed native Windows GUI/resource, DPAPI, system-tray, and accessible API-key-field metadata checks with a fresh profile and no Python-specific environment or PATH. No AI or Discord requests were made.
+- The installer installed into an isolated workspace folder and uninstalled successfully, with application closing explicitly disabled during the test. The portable ZIP passed integrity, required Qt plugin/artwork/license, private-file exclusion, and local-credential exclusion checks.
+- Native Narrator/NVDA interaction, actual Windows contrast/DPI changes, and a complete manual accessibility review remain untested. This release implements accessibility improvements; it is not a completed ACR or a claim of full Section 508 conformance. See [ACCESSIBILITY.md](ACCESSIBILITY.md).
+- This remains an unsigned Windows build. Qt/PySide6/Shiboken 6.12.0 replace the previous Tk/pystray interface; the shared runtime libraries and license notices are included.
 
 ## Desktop 1.1.0 update
 

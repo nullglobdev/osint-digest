@@ -1,44 +1,30 @@
-"""Windows tray callbacks communicate with Tk only through a thread-safe queue."""
-import threading
+"""Qt tray integration, sharing the application's main event loop."""
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
 
 class Tray:
-    def __init__(self, events, image_path):
-        self.events, self.image_path = events, image_path
-        self.icon = None
-        self.ready = False
-        self.stopping = False
+    def __init__(self, parent, image_path, show, stop_checks, exit_app):
+        self.icon = QSystemTrayIcon(QIcon(str(image_path)), parent)
+        self.icon.setToolTip('OSINT Digest')
+        self.menu = QMenu(parent)
+        self.menu.addAction('Open OSINT Digest', show)
+        self.menu.addAction('Stop automatic checks', stop_checks)
+        self.menu.addSeparator()
+        self.menu.addAction('Exit after current task', exit_app)
+        self.icon.setContextMenu(self.menu)
+        self.icon.activated.connect(lambda reason: show() if reason in (
+            QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick) else None)
+
+    @property
+    def ready(self):
+        return self.icon.isVisible()
 
     def start(self):
-        threading.Thread(target=self._run, daemon=True).start()
-
-    def _run(self):
-        try:
-            import pystray
-            from PIL import Image
-            with Image.open(self.image_path) as image:
-                picture = image.copy()
-            def send(event):
-                return lambda icon, item: self.events.put((event, None))
-            self.icon = pystray.Icon('OSINTDigest', picture, 'OSINT Digest', pystray.Menu(
-                pystray.MenuItem('Open OSINT Digest', send('show'), default=True),
-                pystray.MenuItem('Stop automatic checks', send('stop_checks')),
-                pystray.Menu.SEPARATOR,
-                pystray.MenuItem('Exit (finish current task)', send('exit'))))
-            def setup(icon):
-                if self.stopping:
-                    icon.stop()
-                    return
-                icon.visible = True
-                self.ready = True
-                self.events.put(('tray_ready', None))
-            self.icon.run(setup)
-        except Exception:
-            self.events.put(('tray_error', None))
-        finally:
-            self.ready = False
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            return False
+        self.icon.show()
+        return True
 
     def stop(self):
-        self.stopping = True
-        if self.icon and self.ready:
-            self.icon.stop()
+        self.icon.hide()

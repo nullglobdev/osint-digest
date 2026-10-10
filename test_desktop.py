@@ -87,48 +87,5 @@ class DesktopTests(unittest.TestCase):
                 self.assertIsNone(request.call_args.args[0].data)
                 send.assert_not_called()
 
-    def test_gui_runs_worker_and_stops_automatic_checks_on_close(self):
-        import tkinter as tk
-        import desktop
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            window = tk.Tk()
-            window.withdraw()
-            app = desktop.DigestApp(window, root)
-            app.provider.set('Publisher excerpts (no AI)')
-            app.variables['webhook'].set('https://discord.com/api/webhooks/123/fake')
-            process = Mock()
-            process.poll.return_value = None
-            with patch('desktop.subprocess.Popen', return_value=process) as popen:
-                app.toggle_monitor()
-                self.assertTrue(app.monitoring)
-                self.assertTrue(app.process)
-                command = popen.call_args.args[0]
-                self.assertEqual(command[-2:], ['--worker', 'new'])
-                self.assertNotIn('fake', ' '.join(command))
-                (root / 'activity.log').write_text('Posted: 2; AI summaries: 0\n', encoding='utf-8')
-                process.poll.return_value = 0
-                app.poll()
-                self.assertIsNone(app.process)
-                self.assertIn('Posted: 2', app.activity.get('1.0', 'end'))
-                self.assertGreater(app.next_check, desktop.time.time())
-                app.toggle_monitor()
-                self.assertFalse(app.monitoring)
-            app.close()
-
-    def test_gui_rejects_send_before_connection_without_spawning_worker(self):
-        import tkinter as tk
-        import desktop
-        with tempfile.TemporaryDirectory() as tmp:
-            window = tk.Tk()
-            window.withdraw()
-            app = desktop.DigestApp(window, Path(tmp))
-            with patch('desktop.subprocess.Popen') as popen, patch('desktop.messagebox.showinfo') as notice:
-                self.assertFalse(app.start('batch'))
-                popen.assert_not_called()
-                notice.assert_called_once()
-            app.close()
-
-
 if __name__ == '__main__':
     unittest.main()
