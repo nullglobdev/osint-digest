@@ -1,0 +1,81 @@
+{
+  "checked_at": "2026-10-09 UTC",
+  "results": [
+    {
+      "name": "Microsoft",
+      "url": "https://www.microsoft.com/en-us/security/blog/topic/threat-intelligence/feed/",
+      "final_url": "https://www.microsoft.com/en-us/security/blog/topic/threat-intelligence/feed/",
+      "items": 10,
+      "status": "ok"
+    },
+    {
+      "name": "Google",
+      "url": "https://feeds.feedburner.com/threatintelligence/pvexyqv7v0v",
+      "final_url": "https://feeds.feedburner.com/threatintelligence/pvexyqv7v0v",
+      "items": 20,
+      "status": "ok"
+    },
+    {
+      "name": "Huntress",
+      "url": "https://www.huntress.com/blog/rss.xml",
+      "final_url": "https://www.huntress.com/blog/rss.xml",
+      "items": 728,
+      "status": "ok"
+    },
+    {
+      "name": "Proofpoint",
+      "url": "https://www.proofpoint.com/us/threat-insight-blog.xml",
+      "final_url": "https://www.proofpoint.com/us/threat-insight-blog.xml",
+      "items": 10,
+      "status": "ok"
+    },
+    {
+      "name": "SOCRadar",
+      "url": "https://socradar.io/feed/",
+      "final_url": "https://socradar.io/feed/",
+      "items": 10,
+      "status": "ok"
+    },
+    {
+      "name": "Talos",
+      "url": "https://blog.talosintelligence.com/rss/",
+      "final_url": "https://blog.talosintelligence.com/rss/",
+      "items": 15,
+      "status": "ok"
+    },
+    {
+      "name": "Unit42",
+      "url": "https://unit42.paloaltonetworks.com/feed/",
+      "final_url": "https://unit42.paloaltonetworks.com/feed/",
+      "items": 15,
+      "status": "ok"
+    },
+    {
+      "name": "ESET",
+      "url": "https://www.welivesecurity.com/en/rss/feed/",
+      "final_url": "https://www.welivesecurity.com/en/rss/feed/",
+      "items": 100,
+      "status": "ok"
+    },
+    {
+      "name": "SentinelLabs",
+      "url": "https://www.sentinelone.com/labs/feed/",
+      "final_url": "https://www.sentinelone.com/labs/feed/",
+      "items": 10,
+      "status": "ok"
+    },
+    {
+      "name": "Securelist",
+      "url": "https://securelist.com/feed/",
+      "final_url": "https://securelist.com/feed/",
+      "items": 10,
+      "status": "ok"
+    },
+    {
+      "name": "CISA",
+      "url": "https://www.cisa.gov/cybersecurity-advisories/all.xml",
+      "status": "HTTPError",
+      "detail": "HTTP Error 403: Forbidden"
+    }
+  ]
+}

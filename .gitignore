@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+preview/
+*.pyc
+.run.lock
+.build-venv/
+.build-tools/
+build/
+dist/
+.desktop-test/
+state/*.bak
+state/*.json
+settings.json
+*.log

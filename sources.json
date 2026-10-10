@@ -1,0 +1,97 @@
+[
+  {
+    "name": "Microsoft",
+    "feed": "https://www.microsoft.com/en-us/security/blog/topic/threat-intelligence/feed/",
+    "hosts": [
+      "www.microsoft.com",
+      "microsoft.com"
+    ],
+    "enabled": true
+  },
+  {
+    "name": "Google",
+    "feed": "https://feeds.feedburner.com/threatintelligence/pvexyqv7v0v",
+    "hosts": [
+      "feeds.feedburner.com",
+      "cloud.google.com",
+      "www.mandiant.com"
+    ],
+    "enabled": true
+  },
+  {
+    "name": "Huntress",
+    "feed": "https://www.huntress.com/blog/rss.xml",
+    "hosts": [
+      "www.huntress.com",
+      "huntress.com"
+    ],
+    "enabled": true
+  },
+  {
+    "name": "Proofpoint",
+    "feed": "https://www.proofpoint.com/us/threat-insight-blog.xml",
+    "hosts": [
+      "www.proofpoint.com",
+      "proofpoint.com"
+    ],
+    "enabled": true
+  },
+  {
+    "name": "SOCRadar",
+    "feed": "https://socradar.io/feed/",
+    "hosts": [
+      "socradar.io"
+    ],
+    "enabled": true
+  },
+  {
+    "name": "Talos",
+    "feed": "https://blog.talosintelligence.com/rss/",
+    "hosts": [
+      "blog.talosintelligence.com"
+    ],
+    "enabled": true
+  },
+  {
+    "name": "Unit42",
+    "feed": "https://unit42.paloaltonetworks.com/feed/",
+    "hosts": [
+      "unit42.paloaltonetworks.com"
+    ],
+    "enabled": true
+  },
+  {
+    "name": "ESET",
+    "feed": "https://www.welivesecurity.com/en/rss/feed/",
+    "hosts": [
+      "www.welivesecurity.com",
+      "welivesecurity.com"
+    ],
+    "enabled": true
+  },
+  {
+    "name": "SentinelLabs",
+    "feed": "https://www.sentinelone.com/labs/feed/",
+    "hosts": [
+      "www.sentinelone.com",
+      "sentinelone.com"
+    ],
+    "enabled": true
+  },
+  {
+    "name": "Securelist",
+    "feed": "https://securelist.com/feed/",
+    "hosts": [
+      "securelist.com"
+    ],
+    "enabled": true
+  },
+  {
+    "name": "CISA",
+    "feed": "https://www.cisa.gov/cybersecurity-advisories/all.xml",
+    "hosts": [
+      "www.cisa.gov"
+    ],
+    "enabled": false
+  }
+]

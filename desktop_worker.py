@@ -1,0 +1,63 @@
+"""Isolated desktop worker; no credentials in command-line arguments or logs."""
+import os
+import sys
+import urllib.request
+
+import bot
+from desktop_settings import initialize, load_settings, apply_environment
+
+ACTIONS = ('feeds', 'ai', 'preview', 'batch', 'new', 'webhook')
+
+
+class RedactedLog:
+    def __init__(self, stream, secrets):
+        self.stream = stream
+        self.secrets = [s for s in secrets if s]
+
+    def write(self, text):
+        for secret in self.secrets:
+            text = text.replace(secret, '[hidden]')
+        return self.stream.write(text)
+
+    def flush(self):
+        self.stream.flush()
+
+
+def run_worker(root, action):
+    initialize(root)
+    with (root / 'activity.log').open('w', encoding='utf-8', buffering=1) as log:
+        previous = sys.stdout, sys.stderr
+        try:
+            sys.stdout = sys.stderr = log
+            settings = load_settings(root)
+            sys.stdout = sys.stderr = RedactedLog(log, (settings['webhook'], settings['gemini_key']))
+            apply_environment(settings)
+            bot.ROOT = root
+            if action not in ACTIONS:
+                raise ValueError('Unknown action')
+            if action == 'webhook':
+                if not settings['webhook']:
+                    print('Add a Discord webhook in Connection first.')
+                    return 1
+                request = urllib.request.Request(settings['webhook'], headers={'User-Agent': bot.UA})
+                with urllib.request.urlopen(request, timeout=20) as response:
+                    if response.status != 200:
+                        return 1
+                print('Discord connection verified. No test message was sent.')
+                return 0
+            flags = {'feeds': ['--check-feeds'], 'ai': ['--test-ai'],
+                     'preview': ['--batch', str(settings['batch_size']), '--dry-run'],
+                     'batch': ['--batch', str(settings['batch_size'])],
+                     'new': ['--max-posts', str(settings['batch_size'])]}[action]
+            old_args = sys.argv
+            try:
+                sys.argv = ['bot.py', *flags]
+                return bot.main()
+            finally:
+                sys.argv = old_args
+        except Exception as error:
+            print('Task failed: ' + bot.error_label(error))
+            print('Check your connection settings and try again. No credentials are included in this log.')
+            return 1
+        finally:
+            sys.stdout, sys.stderr = previous
