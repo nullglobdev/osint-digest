@@ -1,6 +1,7 @@
 """Per-user desktop configuration. Secrets use Windows user-scoped DPAPI."""
 import base64
 import ctypes
+from copy import deepcopy
 from ctypes import wintypes
 import json
 import os
@@ -9,11 +10,14 @@ import re
 import sys
 from urllib.parse import urlsplit
 
+from desktop_ai import PROVIDERS, KEY_ENV
+
 APP_NAME = 'OSINT Digest'
-VERSION = '1.0.0'
+VERSION = '1.1.0'
 DEFAULTS = {'provider': 'gemini', 'model': 'gemini-3.1-flash-lite',
-            'webhook': '', 'gemini_key': '', 'batch_size': 5, 'interval_minutes': 60}
-SECRET_KEYS = ('webhook', 'gemini_key')
+            'webhook': '', 'api_key': '', 'batch_size': 5, 'interval_minutes': 60,
+            'close_to_tray': True, 'profiles': {}}
+SECRET_KEYS = ('webhook', 'api_key')
 
 
 def resource_path(name):
@@ -67,43 +71,63 @@ def unprotect(value):
 
 
 def validate(settings):
-    if settings['provider'] not in ('gemini', 'none', 'ollama'):
-        raise ValueError('Choose Gemini, publisher excerpts, or local Ollama.')
+    if settings['provider'] not in PROVIDERS.values():
+        raise ValueError('Choose a summary provider from the list.')
     if settings['webhook']:
         p = urlsplit(settings['webhook'])
         if (p.scheme != 'https' or p.hostname != 'discord.com' or p.username or p.password
                 or p.port not in (None, 443) or p.fragment
                 or not re.fullmatch(r'/api/webhooks/\d+/[\w-]+', p.path)):
             raise ValueError('Paste a Discord channel webhook URL from Channel Settings > Integrations > Webhooks.')
-    if '\n' in settings['gemini_key'] or '\r' in settings['gemini_key']:
-        raise ValueError('The Gemini API key must be on a single line.')
-    if settings['provider'] == 'gemini' and not re.fullmatch(r'[A-Za-z0-9._-]+', settings['model']):
-        raise ValueError('Enter a Gemini API model name, for example gemini-3.1-flash-lite.')
-    if settings['provider'] == 'ollama' and not settings['model'].strip():
-        raise ValueError('Enter the name of a model installed in Ollama.')
+    profiles = list(settings.get('profiles', {}).values()) + [settings]
+    for profile in profiles:
+        if any(ord(c) < 32 or ord(c) == 127 for c in profile.get('api_key', '')):
+            raise ValueError('The AI API key must be on a single line without control characters.')
+        if profile.get('model') and not re.fullmatch(r'[A-Za-z0-9._:/-]+', profile['model']):
+            raise ValueError('Enter a model ID or choose a model from the list.')
+    if settings['provider'] == 'gemini' and settings['model'] and not re.fullmatch(r'[A-Za-z0-9._-]+', settings['model']):
+        raise ValueError('Choose a Gemini model ID without the models/ prefix.')
     if not 1 <= int(settings['batch_size']) <= 20:
         raise ValueError('Choose between 1 and 20 articles.')
-    if not 15 <= int(settings['interval_minutes']) <= 1440:
-        raise ValueError('Choose an automatic check interval between 15 and 1440 minutes.')
+    if not 15 <= int(settings['interval_minutes']) <= 360:
+        raise ValueError('Choose an automatic check interval between 15 and 360 minutes.')
 
 
 def load_settings(root):
     path = root / 'settings.json'
     if not path.exists():
-        return dict(DEFAULTS)
+        return deepcopy(DEFAULTS)
     data = json.loads(path.read_text(encoding='utf-8'))
-    result = {**DEFAULTS, **{k: data[k] for k in DEFAULTS if k in data and k not in SECRET_KEYS}}
-    for key in SECRET_KEYS:
-        result[key] = unprotect(data.get(key + '_protected', ''))
+    result = {**deepcopy(DEFAULTS), **{k: data[k] for k in DEFAULTS
+                                     if k in data and k not in (*SECRET_KEYS, 'profiles')}}
+    result['webhook'] = unprotect(data.get('webhook_protected', ''))
+    result['profiles'] = {provider: {'model': profile.get('model', ''),
+                                    'api_key': unprotect(profile.get('api_key_protected', ''))}
+                          for provider, profile in data.get('profiles', {}).items()
+                          if provider in PROVIDERS.values()}
+    # Migrate v1.0 without assigning a Gemini credential to any other provider.
+    if 'gemini_key_protected' in data:
+        result['profiles'].setdefault('gemini', {
+            'api_key': unprotect(data['gemini_key_protected']),
+            'model': result['model'] if result['provider'] == 'gemini' else DEFAULTS['model']})
+    profile = result['profiles'].get(result['provider'], {})
+    result['api_key'] = profile.get('api_key', '')
+    result['model'] = profile.get('model', result['model'])
+    result['interval_minutes'] = min(360, int(result['interval_minutes']))
     validate(result)
     return result
 
 
 def save_settings(root, settings):
     validate(settings)
-    data = {k: settings[k] for k in DEFAULTS if k not in SECRET_KEYS}
-    for key in SECRET_KEYS:
-        data[key + '_protected'] = protect(settings[key])
+    data = {k: settings[k] for k in DEFAULTS if k not in (*SECRET_KEYS, 'profiles')}
+    data['schema_version'] = 2
+    data['webhook_protected'] = protect(settings['webhook'])
+    profiles = {**settings.get('profiles', {}), settings['provider']: {
+        'model': settings['model'], 'api_key': settings['api_key']}}
+    data['profiles'] = {provider: {'model': profile['model'],
+                                   'api_key_protected': protect(profile['api_key'])}
+                        for provider, profile in profiles.items() if provider in PROVIDERS.values()}
     atomic_json(root / 'settings.json', data)
 
 
@@ -118,6 +142,9 @@ def apply_environment(settings):
     for key in ('DISCORD_WEBHOOK_URL', 'GEMINI_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY',
                 'AI_PROVIDER', 'AI_MODEL', 'ALLOW_PAID_AI', 'MAX_POSTS'):
         os.environ.pop(key, None)
-    os.environ.update(DISCORD_WEBHOOK_URL=settings['webhook'], GEMINI_API_KEY=settings['gemini_key'],
+    os.environ.update(DISCORD_WEBHOOK_URL=settings['webhook'],
                       AI_PROVIDER=settings['provider'], AI_MODEL=settings['model'],
-                      ALLOW_PAID_AI='false', MAX_POSTS=str(settings['batch_size']))
+                      ALLOW_PAID_AI='true' if settings['provider'] in ('openai', 'anthropic') else 'false',
+                      MAX_POSTS=str(settings['batch_size']))
+    if settings['provider'] in KEY_ENV:
+        os.environ[KEY_ENV[settings['provider']]] = settings['api_key']

@@ -2,7 +2,7 @@
 
 Download the Windows installer or portable ZIP from [GitHub Releases](https://github.com/ry304/osint-digest/releases/latest). This repository is private; downloads require access to the repository.
 
-**Windows desktop app:** a graphical setup screen, source selection, AI previews, batch delivery and automatic checks are now available. See [DESKTOP.md](DESKTOP.md) for installation and build instructions. The desktop installer bundles Python; the CLI instructions below remain supported.
+**Windows desktop app:** graphical setup for Gemini, OpenAI, Claude, or Ollama; provider model discovery; editable RSS/Atom sources; AI previews; batch delivery; and automatic checks every 15–360 minutes with system-tray support. See [DESKTOP.md](DESKTOP.md) for installation and build instructions. The desktop installer bundles Python; the CLI instructions below remain supported.
 
 A scheduled Python collector that watches publisher RSS/Atom feeds and posts new articles to a Discord channel through a webhook. It needs Python 3.11+ and **no pip packages**. This is a working starter, not a deployed service. It does not read Discord messages or support slash commands.
 

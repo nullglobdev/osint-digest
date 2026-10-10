@@ -2,6 +2,18 @@
 
 Checked in the build environment on October 9, 2026 UTC.
 
+## Desktop 1.1.0 update
+
+- All 45 tests passed in the pinned Windows build environment. New coverage includes provider-specific credential isolation, legacy Gemini settings migration, model discovery and pagination, invalid custom sources, source ordering and persistence, the 360-minute limit, tray lifecycle, and orderly exit with an active worker.
+- OpenAI and Claude desktop generation paths passed mocked end-to-end adapter tests, including grounded output and provider authentication. Live calls to those providers were not tested because their keys were not supplied.
+- Live Gemini model discovery returned 32 text-model candidates, including the configured model. Model discovery did not generate a summary or send a Discord message.
+- Final portable and installed executables passed GUI/resource, DPAPI, and real Windows tray startup checks with a fresh profile and no Python-specific environment or PATH. Fresh profiles contained no credentials.
+- The 1.1.0 installer installed into an isolated workspace test folder and uninstalled successfully. Existing application data and the running 1.0 app were preserved.
+- The portable ZIP passed its integrity check. Source files and the unpacked ZIP were checked against local credential values; private settings, .env, state, and preview paths were excluded. The tray library is bundled as replaceable source with its license notices.
+- Visual screenshot review could not run: the Computer Use helper returned "native pipe is unavailable" / Windows error 2, including after reconnecting. GUI behavior is covered by automated tests; a complete visual review remains outstanding.
+
+The records below describe earlier collector and 1.0 packaging validation.
+
 ## Passed
 
 - Python compilation.

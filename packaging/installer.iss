@@ -1,4 +1,6 @@
-#define AppVersion "1.0.0"
+#ifndef AppVersion
+#define AppVersion "1.1.0"
+#endif
 [Setup]
 AppId={{B212567B-9F98-4F42-AC83-31B1EAC7F670}
 AppName=OSINT Digest
@@ -26,7 +28,7 @@ InfoBeforeFile=..\packaging\install-notes.txt
 Name: desktopicon; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: unchecked
 
 [Files]
-Source: "..\dist\OSINTDigest\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\dist\{#AppVersion}\OSINTDigest\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\OSINT Digest"; Filename: "{app}\OSINTDigest.exe"

@@ -17,12 +17,15 @@ class DesktopTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             value = {**settings.DEFAULTS, 'webhook': 'https://discord.com/api/webhooks/123/private-webhook-token',
-                     'gemini_key': 'private-test-api-key'}
+                     'api_key': 'private-test-api-key'}
             settings.save_settings(root, value)
             stored = (root / 'settings.json').read_text()
             self.assertNotIn('private-webhook-token', stored)
             self.assertNotIn('private-test-api-key', stored)
-            self.assertEqual(settings.load_settings(root), value)
+            loaded = settings.load_settings(root)
+            self.assertEqual(loaded['api_key'], value['api_key'])
+            self.assertEqual(loaded['webhook'], value['webhook'])
+            self.assertEqual(loaded['profiles']['gemini']['api_key'], value['api_key'])
 
     def test_fresh_profile_has_sources_but_no_developer_credentials_or_history(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -58,12 +61,12 @@ class DesktopTests(unittest.TestCase):
             root = Path(tmp)
             settings.initialize(root)
             value = {**settings.DEFAULTS, 'webhook': 'https://discord.com/api/webhooks/123/test-secret',
-                     'gemini_key': 'private-gemini-secret', 'batch_size': 10}
+                     'api_key': 'private-gemini-secret', 'batch_size': 10}
             settings.save_settings(root, value)
             def main():
                 self.assertEqual(worker.sys.argv, ['bot.py', '--batch', '10'])
                 self.assertEqual(worker.bot.ROOT, root)
-                print(value['webhook'], value['gemini_key'])
+                print(value['webhook'], value['api_key'])
                 return 0
             with patch.object(worker.bot, 'ROOT', root), patch.object(worker.bot, 'main', side_effect=main):
                 self.assertEqual(worker.run_worker(root, 'batch'), 0)

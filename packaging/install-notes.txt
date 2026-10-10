@@ -3,9 +3,10 @@ OSINT Digest for Windows
 Send publisher research summaries to your own Discord channel.
 
 Requirements: Windows 10 or 11 (64-bit), internet access, and a Discord channel webhook.
-Python is included. Gemini summaries require your own Gemini API key. API usage follows your provider's quota and billing.
+Python is included. Choose Gemini, OpenAI, Claude, local Ollama, or publisher excerpts. Cloud AI requires your own provider API key; usage follows your provider's quota and billing.
 
 After installation, open Connection to enter your webhook and key, then Preview batch before sending.
 
-Automatic checks run while the app is open and the PC is awake. Closing the app stops checking.
+Add your own RSS/Atom sources in Sources. Automatic checks support intervals of 15 to 360 minutes.
+The app can run in the system tray while your PC is awake. Use Exit to stop it completely.
 Settings and delivery history are saved under your Windows account. Uninstalling the app preserves that data.

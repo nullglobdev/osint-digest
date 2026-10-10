@@ -30,7 +30,9 @@ def run_worker(root, action):
         try:
             sys.stdout = sys.stderr = log
             settings = load_settings(root)
-            sys.stdout = sys.stderr = RedactedLog(log, (settings['webhook'], settings['gemini_key']))
+            secrets = [settings['webhook'], settings['api_key']]
+            secrets.extend(profile.get('api_key', '') for profile in settings['profiles'].values())
+            sys.stdout = sys.stderr = RedactedLog(log, secrets)
             apply_environment(settings)
             bot.ROOT = root
             if action not in ACTIONS:

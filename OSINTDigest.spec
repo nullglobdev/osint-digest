@@ -11,13 +11,15 @@ if python_license.exists():
     data.append((str(python_license), 'licenses/python'))
 for license_file in (Path(sys.base_prefix) / 'tcl').glob('*/license.terms'):
     data.append((str(license_file), 'licenses/tcl-tk/' + license_file.parent.name))
-pyinstaller_dist = distribution('pyinstaller')
-for file in pyinstaller_dist.files:
-    if 'licenses' in file.parts and file.name in ('COPYING.txt', 'LICENSE', 'LICENSE.txt'):
-        data.append((str(pyinstaller_dist.locate_file(file)), 'licenses/pyinstaller'))
+for package in ('pyinstaller', 'pystray', 'pillow', 'six'):
+    package_dist = distribution(package)
+    for file in package_dist.files:
+        if file.name.lower().startswith(('copying', 'license')) and '.dist-info' in str(file):
+            data.append((str(package_dist.locate_file(file)), 'licenses/' + package))
 a = Analysis([str(root / 'desktop.py')], pathex=[str(root)], binaries=[], datas=data,
-             hiddenimports=[], hookspath=[], hooksconfig={}, runtime_hooks=[],
-             excludes=['unittest', 'test', 'pydoc', 'doctest'], noarchive=False)
+             hiddenimports=['pystray._win32'], hookspath=[], hooksconfig={}, runtime_hooks=[],
+             excludes=['unittest', 'test', 'pydoc', 'doctest'], noarchive=False,
+             module_collection_mode={'pystray': 'py'})
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name='OSINTDigest', debug=False,
           bootloader_ignore_signals=False, strip=False, upx=False, console=False,
