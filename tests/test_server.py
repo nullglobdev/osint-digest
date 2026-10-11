@@ -39,6 +39,9 @@ class ServerTests(unittest.TestCase):
 
     def configure(self, **changes):
         config, revision = settings.load_config(self.root)
+        if 'webhook' in changes:
+            url = changes.pop('webhook')
+            changes['webhooks'] = [{'name': 'Primary', 'url': url, 'enabled': True}] if url else []
         config.update(changes)
         settings.save_config(self.root, config, revision)
         return config
@@ -48,7 +51,7 @@ class ServerTests(unittest.TestCase):
             config, _ = settings.load_config(self.root)
             self.assertFalse(config['enabled'])
             self.assertEqual(config['provider'], 'none')
-            self.assertEqual(config['webhook'], '')
+            self.assertEqual(config['webhooks'], [])
             self.assertGreater(len(config['sources']), 0)
             with settings.configured_environment(config):
                 self.assertEqual(os.environ['DISCORD_WEBHOOK_URL'], '')
@@ -58,8 +61,8 @@ class ServerTests(unittest.TestCase):
     def test_existing_server_volume_keeps_its_config_and_history(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            config = {**deepcopy(settings.DEFAULTS), 'webhook': WEBHOOK,
-                      'max_posts': 10, 'sources': [SOURCE]}
+            config = {**deepcopy(settings.DEFAULTS), 'schema_version': 1, 'webhook': WEBHOOK,
+                      'per_source_limit': 10, 'sources': [SOURCE]}
             # Existing deployments use this literal filename, independent of module names.
             original = json.dumps(config).encode()
             (root / 'server.json').write_bytes(original)
@@ -67,22 +70,38 @@ class ServerTests(unittest.TestCase):
             history = (root / 'state/state.json').read_bytes()
             settings.initialize(root)
             loaded, _ = settings.load_config(root)
-            self.assertEqual(loaded, config)
+            self.assertEqual(loaded['schema_version'], 5)
+            self.assertEqual(loaded['legacy_webhook_id'], '123')
+            self.assertEqual(loaded['webhooks'], [{'name': 'Primary', 'url': WEBHOOK, 'enabled': True}])
             self.assertEqual((root / 'server.json').read_bytes(), original)
             self.assertEqual((root / 'state/state.json').read_bytes(), history)
 
     def test_config_rejects_stale_session_and_preserves_valid_file(self):
         original, revision = settings.load_config(self.root)
         self.configure(interval_minutes=360)
-        original['max_posts'] = 10
+        original['per_source_limit'] = 10
         with self.assertRaises(settings.SettingsError):
             settings.save_config(self.root, original, revision)
         self.assertEqual(settings.load_config(self.root)[0]['interval_minutes'], 360)
-        self.assertEqual(settings.load_config(self.root)[0]['max_posts'], 5)
+        self.assertEqual(settings.load_config(self.root)[0]['per_source_limit'], 5)
+
+    def test_old_server_settings_gain_per_source_limit_without_rewriting_credentials(self):
+        config = self.configure(webhook=WEBHOOK)
+        config.pop('per_source_limit')
+        config.update(schema_version=2, max_posts=10)
+        settings.atomic_json(self.root / 'server.json', config)
+        before = (self.root / 'server.json').read_bytes()
+        loaded, _ = settings.load_config(self.root)
+        self.assertEqual(loaded['per_source_limit'], 10)
+        self.assertEqual(loaded['webhooks'], config['webhooks'])
+        self.assertEqual((self.root / 'server.json').read_bytes(), before)
+        for value in (0, 101, True, '5'):
+            with self.assertRaises(settings.SettingsError):
+                settings.validate({**loaded, 'per_source_limit': value})
 
     def test_validation_bounds_and_credential_safe_messages(self):
         config, _ = settings.load_config(self.root)
-        for changes in ({'interval_minutes': 361}, {'interval_minutes': 14}, {'max_posts': 0},
+        for changes in ({'interval_minutes': 361}, {'interval_minutes': 14}, {'per_source_limit': 0},
                         {'enabled': 'yes'}, {'webhook': 'https://example.test/secret-token'},
                         {'schema_version': 999}, {'ollama_url': 'http://secret-token@host:11434'}):
             with self.subTest(changes=changes), self.assertRaises(settings.SettingsError) as caught:
@@ -95,7 +114,7 @@ class ServerTests(unittest.TestCase):
     def test_config_is_private_before_and_after_save(self):
         path = self.root / 'server.json'
         self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
-        self.configure(max_posts=10)
+        self.configure(per_source_limit=10)
         self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
 
     def test_provider_keys_are_isolated_and_paid_ai_requires_opt_in(self):
@@ -113,25 +132,27 @@ class ServerTests(unittest.TestCase):
             self.assertNotIn('GEMINI_API_KEY', os.environ)
 
     def test_run_uses_config_snapshot_and_preserves_collector_context(self):
-        self.configure(webhook=WEBHOOK, sources=[SOURCE], max_posts=1)
+        self.configure(webhook=WEBHOOK, sources=[SOURCE], per_source_limit=1)
         original_root = bot.ROOT
         with patch.object(bot, 'run', return_value=0) as run, patch.object(bot, 'load_env') as env, redirect_stdout(io.StringIO()):
             self.assertEqual(server.run_action(self.root, 'preview'), 0)
             self.assertIsNone(run.call_args.args[0].max_posts)
             self.assertFalse(run.call_args.args[0].test_mode)
             self.assertTrue(run.call_args.args[0].dry_run)
+            self.assertEqual(run.call_args.args[0].per_source_limit, 1)
+            self.assertEqual(run.call_args.args[0].max_age_hours, 48)
             self.assertEqual(run.call_args.kwargs['sources'], [SOURCE])
             env.assert_not_called()
         self.assertEqual(bot.ROOT, original_root)
         self.assertEqual(json.loads((self.root / 'last-run.json').read_text())['action'], 'preview')
 
     def test_preview_does_not_send_or_change_history(self):
-        self.configure(webhook=WEBHOOK, sources=[SOURCE], max_posts=1)
+        self.configure(webhook=WEBHOOK, sources=[SOURCE], per_source_limit=1)
         state = {'feeds': {}, 'pending': {}, 'seen': {'old': {'status': 'sent'}}}
         bot.save_state(self.root / 'state/state.json', state)
         original = (self.root / 'state/state.json').read_bytes()
         entry = {'source': 'Test', 'title': 'Test article', 'url': 'https://publisher.example/one',
-                 'published': '', 'discovered': bot.now()}
+                 'published': bot.now(), 'discovered': bot.now()}
         with patch.object(bot, 'fetch', return_value=(200, b'feed', {}, '')), patch.object(bot, 'parse_feed', return_value=[entry]), patch.object(bot, 'article_report', return_value={
             **entry, 'ai_status': 'No AI', 'analysis': None, 'iocs': [], 'cves': [], 'attack_ids': [],
             'publisher_excerpt': 'Text'}), patch.object(bot, 'send_discord') as send, redirect_stdout(io.StringIO()):
@@ -141,7 +162,7 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(len(list((self.root / 'preview').glob('*.json'))), 1)
 
     def test_repeat_and_limit_require_explicit_test_mode(self):
-        self.configure(webhook=WEBHOOK, sources=[SOURCE], max_posts=10)
+        self.configure(webhook=WEBHOOK, sources=[SOURCE], per_source_limit=10)
         with patch.object(bot, 'run', return_value=0) as run, redirect_stdout(io.StringIO()):
             for action, count in [('batch', None), ('new', 2), ('preview', 1)]:
                 with self.assertRaisesRegex(settings.SettingsError, '--test-mode'):
@@ -149,17 +170,38 @@ class ServerTests(unittest.TestCase):
             run.assert_not_called()
             self.assertEqual(server.run_action(self.root, 'new', test_mode=True), 0)
             self.assertTrue(run.call_args.args[0].test_mode)
-            self.assertEqual(run.call_args.args[0].max_posts, 10)
+            self.assertEqual(run.call_args.args[0].per_source_limit, 10)
             self.assertEqual(server.run_action(self.root, 'new'), 0)
             self.assertFalse(run.call_args.args[0].test_mode)
             self.assertIsNone(run.call_args.args[0].max_posts)
 
     def test_menu_test_mode_applies_only_to_selected_manual_task(self):
-        with patch('builtins.input', side_effect=['9', '3', '2', '10', '0']), patch.object(server, 'run_action', return_value=0) as run, redirect_stdout(io.StringIO()):
+        with patch('builtins.input', side_effect=['9', '3', '30', '2', '10', '0']), patch.object(server, 'run_action', return_value=0) as run, redirect_stdout(io.StringIO()):
             server_setup.administer(self.root, 'settings')
-        self.assertEqual(run.call_args_list[0].kwargs, {'count': 3, 'test_mode': True})
+        self.assertEqual(run.call_args_list[0].kwargs, {'count': 3, 'test_mode': True, 'test_days': 30})
         self.assertEqual(run.call_args_list[1].args, (self.root, 'new'))
         self.assertEqual(run.call_args_list[1].kwargs, {})
+
+    def test_test_timeframe_validation_routing_and_normal_isolation(self):
+        self.configure(webhook=WEBHOOK, sources=[SOURCE], provider='gemini',
+                       profiles={'gemini': {'api_key': 'offline-key', 'model': 'gemini-offline'}})
+        with patch.object(bot, 'run', return_value=0) as run, redirect_stdout(io.StringIO()):
+            for days in (0, 366, True, '7'):
+                with self.assertRaises(settings.SettingsError):
+                    server.run_action(self.root, 'preview', test_days=days)
+            with self.assertRaises(settings.SettingsError):
+                server.run_action(self.root, 'new', test_days=7)
+            run.assert_not_called()
+            for action, mode in (('preview', False), ('test-ai', False), ('new', True)):
+                server.run_action(self.root, action, test_mode=mode, test_days=30)
+                self.assertEqual(run.call_args.args[0].max_age_hours, 720)
+            server.run_action(self.root, 'new')
+            self.assertEqual(run.call_args.args[0].max_age_hours, 48)
+
+    def test_command_line_routes_test_days(self):
+        with patch.object(server, 'run_action', return_value=0) as run:
+            self.assertEqual(server.main(['--data-dir', str(self.root), 'preview', '--test-days', '30']), 0)
+        self.assertEqual(run.call_args.kwargs['test_days'], 30)
 
     def test_busy_worker_blocks_second_action_and_backup(self):
         with settings.file_lock(self.root / '.run.lock'):
@@ -208,12 +250,13 @@ class ServerTests(unittest.TestCase):
             self.assertEqual(server.health(self.root), expected)
 
     def test_stop_finishes_current_post_and_retains_remaining_queue(self):
-        self.configure(webhook=WEBHOOK, sources=[SOURCE], max_posts=2)
+        self.configure(webhook=WEBHOOK, sources=[SOURCE], per_source_limit=2)
+        published = bot.now()
         pending = {f'https://publisher.example/{i}': {'url': f'https://publisher.example/{i}',
-            'source': 'Test', 'discovered': str(i), 'title': f'Article {i}', 'published': ''} for i in range(2)}
+            'source': 'Test', 'discovered': str(i), 'title': f'Article {i}', 'published': published} for i in range(2)}
         bot.save_state(self.root / 'state/state.json', {'feeds': {}, 'pending': pending, 'seen': {}})
         stop = threading.Event()
-        def send(report):
+        def send(report, *, webhook):
             stop.set()
             return 'message-1'
         with patch.object(bot, 'discover', return_value=0), patch.object(bot, 'article_report', return_value={
@@ -261,12 +304,12 @@ class ServerTests(unittest.TestCase):
 
     def test_terminal_wizard_preserves_secrets_and_can_pause(self):
         self.configure(webhook=WEBHOOK, enabled=True)
-        # Keep webhook, choose excerpts, 10 articles, 360 minutes, pause, skip sources.
-        with patch('osint_digest.server.setup.getpass.getpass', return_value=''), patch('builtins.input', side_effect=['5', '10', '360', 'n', 'n']), redirect_stdout(io.StringIO()):
+        # Keep destinations, choose excerpts, 7 per source, 360 minutes, pause, skip sources.
+        with patch('osint_digest.server.setup.getpass.getpass', return_value=''), patch('builtins.input', side_effect=['0', '5', '7', '360', 'n', '0', 'n']), redirect_stdout(io.StringIO()):
             server_setup.edit(self.root, 'setup')
         config, _ = settings.load_config(self.root)
-        self.assertEqual(config['webhook'], WEBHOOK)
-        self.assertEqual((config['max_posts'], config['interval_minutes'], config['enabled']), (10, 360, False))
+        self.assertEqual(config['webhooks'][0]['url'], WEBHOOK)
+        self.assertEqual((config['per_source_limit'], config['interval_minutes'], config['enabled']), (7, 360, False))
 
     def test_sources_menu_adds_reorders_and_disables_custom_feed(self):
         config, _ = settings.load_config(self.root)

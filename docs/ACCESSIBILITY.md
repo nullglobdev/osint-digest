@@ -1,10 +1,11 @@
-# Accessibility in OSINT Digest 1.2
+# Accessibility in OSINT Digest 1.8
 
 The Windows desktop interface has been rebuilt with standard Qt controls, rounded navy panels, and accessibility features targeting the Revised Section 508 software requirements. This is an implementation and test record, not a completed Accessibility Conformance Report or a claim of full Section 508 conformance. End-to-end assistive-technology testing remains required.
 
 ## Use the accessibility controls
 
-- **Theme:** choose Dark, Light, or Windows at the top of the app. Windows uses platform styling. Active Windows contrast themes override the custom themes, including while the app is running. Platform rendering can change the rounded appearance.
+- **Preferences:** appearance, text size, keyboard help, live-update controls, background behavior, and Dev mode are grouped in this tab. The default layout uses compact desktop spacing; text enlargement and keyboard access remain available.
+- **Theme:** choose Dark, Light, or Windows in Preferences. Windows uses platform styling. Active Windows contrast themes override the custom themes, including while the app is running. Platform rendering can change the rounded appearance.
 - **Text size:** choose 100%, 125%, 150%, 175%, or 200%. The app also uses Windows DPI scaling. Controls wrap and pages scroll; at large sizes the whole workspace can scroll. Preferences save immediately without saving unfinished connection edits.
 - **Visible focus:** custom themes use a prominent outline around focused controls. Buttons also use a dashed focus border. Keyboard focus scrolls into view. Source status is written as Enabled or Disabled and does not rely on color.
 - **Pause live activity updates:** freezes the displayed log while tasks continue. Uncheck it to catch up. The interface has no pulsing, flashing, or animated radar.
@@ -15,15 +16,18 @@ The Windows desktop interface has been rebuilt with standard Qt controls, rounde
 | Keys | Action |
 |---|---|
 | Tab / Shift+Tab | Move forward/backward between controls; text areas do not trap Tab |
+| Enter in the article reader | Open the link selected using Tab; article, CVE, and ATT&CK links use the default browser |
 | Space | Activate a focused button or checkbox; enable/disable a selected source row |
 | Arrow keys | Navigate tabs, lists, tables, model choices, and numeric values |
-| Alt+Down | Open a model/provider dropdown |
-| Ctrl+1 / Ctrl+2 / Ctrl+3 / Ctrl+4 | Dashboard / Connection / Sources / Previews |
+| Alt+Down | Open a model/provider/filter dropdown |
+| Ctrl+1 through Ctrl+5 | Dashboard / Connection / Sources / Results / Preferences |
+| Ctrl+6 | Previews, when Dev mode is enabled |
+| Ctrl+7 | Article filters |
 | Ctrl+S | Save connection and source changes |
 | Ctrl+Plus / Ctrl+Minus / Ctrl+0 | Increase / decrease / reset text size |
 | F1 | Open scrollable keyboard and accessibility help |
 | Escape | Cancel a dialog and return to the workspace |
-| Ctrl+A / Ctrl+C | Select/copy text from the focused log or preview |
+| Ctrl+A / Ctrl+C | Select/copy text from the focused log or article reader |
 
 The taskbar and system tray keep their Windows behavior. The tray menu can reopen the app, stop automatic checks, or exit after a task. Opening the executable again restores its existing window.
 

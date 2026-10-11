@@ -11,13 +11,15 @@ import sys
 from urllib.parse import urlsplit
 
 from osint_digest.core.providers import PROVIDERS, KEY_ENV
+from osint_digest.core import scopes
 from osint_digest.paths import resource_path
 
 APP_NAME = 'OSINT Digest'
-VERSION = '1.3.0'
+VERSION = '1.8.0'
 DEFAULTS = {'provider': 'gemini', 'model': 'gemini-3.1-flash-lite',
-            'webhook': '', 'api_key': '', 'batch_size': 5, 'interval_minutes': 60,
-            'close_to_tray': True, 'profiles': {}, 'theme': 'dark', 'text_scale': 100}
+            'webhook': '', 'api_key': '', 'per_source_limit': 5, 'interval_minutes': 60,
+            'close_to_tray': True, 'profiles': {}, 'theme': 'dark', 'text_scale': 100,
+            'developer_mode': False, 'pause_log': False, **scopes.DEFAULTS, 'test_lookback_days': 2}
 SECRET_KEYS = ('webhook', 'api_key')
 
 
@@ -31,6 +33,7 @@ def initialize(root):
     if not sources.exists():
         sources.write_bytes(resource_path('config/sources.json').read_bytes())
     (root / 'preview').mkdir(exist_ok=True)
+    (root / 'results').mkdir(exist_ok=True)
 
 
 class Blob(ctypes.Structure):
@@ -68,6 +71,10 @@ def unprotect(value):
 
 
 def validate(settings):
+    scopes.selection(settings)
+    for key in ('developer_mode', 'pause_log'):
+        if type(settings.get(key, False)) is not bool:
+            raise ValueError('Developer mode and pause updates must be enabled or disabled.')
     if settings.get('theme', 'dark') not in ('dark', 'light', 'system'):
         raise ValueError('Choose Dark, Light, or Windows theme.')
     if int(settings.get('text_scale', 100)) not in (100, 125, 150, 175, 200):
@@ -88,8 +95,10 @@ def validate(settings):
             raise ValueError('Enter a model ID or choose a model from the list.')
     if settings['provider'] == 'gemini' and settings['model'] and not re.fullmatch(r'[A-Za-z0-9._-]+', settings['model']):
         raise ValueError('Choose a Gemini model ID without the models/ prefix.')
-    if not 1 <= int(settings['batch_size']) <= 20:
-        raise ValueError('Choose a test article limit between 1 and 20.')
+    if type(settings['per_source_limit']) is not int or not 1 <= settings['per_source_limit'] <= 100:
+        raise ValueError('Choose an article limit per source between 1 and 100.')
+    if type(settings['test_lookback_days']) is not int or not 1 <= settings['test_lookback_days'] <= 365:
+        raise ValueError('Choose a test article timeframe between 1 and 365 days.')
     if not 15 <= int(settings['interval_minutes']) <= 360:
         raise ValueError('Choose an automatic check interval between 15 and 360 minutes.')
 
@@ -101,6 +110,8 @@ def load_settings(root):
     data = json.loads(path.read_text(encoding='utf-8'))
     result = {**deepcopy(DEFAULTS), **{k: data[k] for k in DEFAULTS
                                      if k in data and k not in (*SECRET_KEYS, 'profiles')}}
+    if 'per_source_limit' not in data and 'batch_size' in data:
+        result['per_source_limit'] = int(data['batch_size'])
     result['webhook'] = unprotect(data.get('webhook_protected', ''))
     result['profiles'] = {provider: {'model': profile.get('model', ''),
                                     'api_key': unprotect(profile.get('api_key_protected', ''))}
@@ -122,7 +133,7 @@ def load_settings(root):
 def save_settings(root, settings):
     validate(settings)
     data = {k: settings[k] for k in DEFAULTS if k not in (*SECRET_KEYS, 'profiles')}
-    data['schema_version'] = 3
+    data['schema_version'] = 7
     data['webhook_protected'] = protect(settings['webhook'])
     profiles = {**settings.get('profiles', {}), settings['provider']: {
         'model': settings['model'], 'api_key': settings['api_key']}}

@@ -12,11 +12,13 @@ from urllib.parse import urlsplit
 from osint_digest.core.endpoints import ollama_base_url
 from osint_digest.core.providers import PROVIDERS, KEY_ENV
 from osint_digest.core.sources import make_source
+from osint_digest.core import scopes
 from osint_digest.paths import resource_path
 
-DEFAULTS = {'schema_version': 1, 'provider': 'none', 'profiles': {}, 'webhook': '',
-            'max_posts': 5, 'interval_minutes': 60, 'enabled': False,
-            'ollama_url': 'http://host.docker.internal:11434', 'sources': []}
+DEFAULTS = {'schema_version': 5, 'provider': 'none', 'profiles': {}, 'webhooks': [],
+            'legacy_webhook_id': '',
+            'per_source_limit': 5, 'interval_minutes': 60, 'enabled': False,
+            'ollama_url': 'http://host.docker.internal:11434', 'sources': [], **scopes.DEFAULTS}
 ENV_KEYS = ('DISCORD_WEBHOOK_URL', 'AI_PROVIDER', 'AI_MODEL', 'ALLOW_PAID_AI',
             'MAX_POSTS', 'OLLAMA_BASE_URL', *KEY_ENV.values())
 
@@ -86,28 +88,64 @@ def initialize(root):
             atomic_json(root / 'server.json', config)
 
 
+def webhook_id(webhook):
+    """Stable across token rotation; never store the secret URL in delivery history."""
+    try:
+        url = urlsplit(webhook)
+        if (not isinstance(webhook, str) or url.scheme != 'https' or url.hostname != 'discord.com'
+                or url.username or url.password or url.port not in (None, 443) or url.query or url.fragment
+                or not re.fullmatch(r'/api/webhooks/\d+/[\w-]+', url.path)
+                or any(c.isspace() for c in webhook)):
+            raise ValueError()
+        return url.path.split('/')[3]
+    except (ValueError, TypeError, AttributeError):
+        raise SettingsError('Enter a Discord channel webhook URL from Channel Settings > Integrations.') from None
+
+
+def validate_webhooks(webhooks):
+    if not isinstance(webhooks, list):
+        raise SettingsError('Webhooks must be a list; use the Webhooks menu.')
+    ids, names = set(), set()
+    for target in webhooks:
+        if not isinstance(target, dict):
+            raise SettingsError('Invalid webhook; use the Webhooks menu.')
+        name = target.get('name')
+        if (not isinstance(name, str) or not name.strip() or len(name) > 80
+                or any(not c.isprintable() for c in name)):
+            raise SettingsError('Webhook names must contain 1–80 printable characters.')
+        if type(target.get('enabled')) is not bool:
+            raise SettingsError('Each webhook must be enabled or disabled.')
+        identity = webhook_id(target.get('url'))
+        if identity in ids or name.strip().casefold() in names:
+            raise SettingsError('Each webhook must have a unique name and Discord webhook ID.')
+        ids.add(identity)
+        names.add(name.strip().casefold())
+
+
+def active_webhooks(config):
+    return [target for target in config['webhooks'] if target['enabled']]
+
+
 def validate(config):
-    if config.get('schema_version') != 1:
+    if config.get('schema_version') != 5:
         raise SettingsError('Unsupported server configuration version; use a compatible app version.')
+    try:
+        scopes.selection(config)
+    except ValueError as error:
+        raise SettingsError(str(error)) from None
     if config.get('provider') not in PROVIDERS.values():
         raise SettingsError('Choose a supported AI provider.')
-    for key, low, high in (('max_posts', 1, 20), ('interval_minutes', 15, 360)):
+    for key, low, high in (('per_source_limit', 1, 100), ('interval_minutes', 15, 360)):
         if type(config.get(key)) is not int or not low <= config[key] <= high:
             raise SettingsError(f'{key} must be a whole number from {low} to {high}.')
     if type(config.get('enabled')) is not bool:
         raise SettingsError('Automatic checks must be enabled or disabled.')
-    webhook = config.get('webhook')
-    if not isinstance(webhook, str):
-        raise SettingsError('Enter a Discord channel webhook URL.')
-    if webhook:
-        try:
-            url = urlsplit(webhook)
-            if (url.scheme != 'https' or url.hostname != 'discord.com' or url.username or url.password
-                    or url.port not in (None, 443) or url.query or url.fragment
-                    or not re.fullmatch(r'/api/webhooks/\d+/[\w-]+', url.path)):
-                raise ValueError()
-        except ValueError:
-            raise SettingsError('Enter a Discord channel webhook URL from Channel Settings > Integrations.') from None
+    if 'webhook' in config:
+        raise SettingsError('Use the webhooks list for server settings; reopen the Webhooks menu.')
+    validate_webhooks(config.get('webhooks'))
+    legacy_id = config.get('legacy_webhook_id', '')
+    if not isinstance(legacy_id, str) or (legacy_id and not re.fullmatch(r'\d+', legacy_id)):
+        raise SettingsError('Invalid legacy webhook history reference.')
     try:
         ollama_base_url(config.get('ollama_url', ''))
     except (ValueError, AttributeError):
@@ -149,6 +187,25 @@ def load_config(root):
         config = json.loads(raw)
         if not isinstance(config, dict):
             raise ValueError()
+        if config.get('schema_version') == 1:
+            # Migrate in memory. Keep the original identity even if the operator
+            # changes destinations before the next run imports old receipts.
+            webhook = config.pop('webhook', '')
+            if not isinstance(webhook, str):
+                raise SettingsError('Invalid legacy webhook setting.')
+            config['legacy_webhook_id'] = webhook_id(webhook) if webhook else ''
+            config['webhooks'] = [{'name': 'Primary', 'url': webhook, 'enabled': True}] if webhook else []
+            config['schema_version'] = 2
+        if config.get('schema_version') == 2:
+            config['schema_version'] = 3
+        if config.get('schema_version') == 3:
+            config['schema_version'] = 4
+        if config.get('schema_version') == 4:
+            config['schema_version'] = 5
+        for key in scopes.LABELS:
+            config.setdefault(key, '')
+        config.setdefault('per_source_limit', config.get('max_posts', 5))
+        config.pop('max_posts', None)
         validate(config)
     except (ValueError, TypeError, KeyError) as error:
         if isinstance(error, SettingsError):
@@ -167,8 +224,8 @@ def save_config(root, config, revision):
 
 
 def require_ready(config, action='new'):
-    if action in ('new', 'batch', 'test-discord') and not config['webhook']:
-        raise SettingsError('Add a Discord webhook in setup first.')
+    if action in ('new', 'batch', 'test-discord') and not active_webhooks(config):
+        raise SettingsError('Add and enable at least one Discord webhook in the Webhooks menu first.')
     provider = config['provider']
     if action in ('check-feeds', 'test-discord'):
         return
@@ -193,7 +250,7 @@ def configured_environment(config):
     provider = config['provider']
     profile = config['profiles'].get(provider, {})
     os.environ.update(AI_PROVIDER=provider, AI_MODEL=profile.get('model', ''),
-                      DISCORD_WEBHOOK_URL=config['webhook'],
+                      DISCORD_WEBHOOK_URL='',
                       ALLOW_PAID_AI='true' if profile.get('allow_paid') else 'false',
                       OLLAMA_BASE_URL=config['ollama_url'])
     if provider in KEY_ENV:

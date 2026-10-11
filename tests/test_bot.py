@@ -18,6 +18,55 @@ def feed(*names):
 
 
 class Tests(unittest.TestCase):
+    def test_local_publishing_is_durable_deduplicated_and_separate_from_discord(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            args = SimpleNamespace(check_feeds=False, dry_run=False, local=True)
+            def report(source, entry):
+                return bot.make_report(entry, 'Article text. ' * 30, 'HTML')
+            with patch.object(bot, 'ROOT', root), patch.dict(os.environ, DISCORD_WEBHOOK_URL='', AI_PROVIDER='none'), patch.object(bot, 'fetch', return_value=(200, feed('one', 'two'), {}, '')), patch.object(bot, 'article_report', side_effect=report) as process, patch.object(bot, 'send_discord', return_value='discord-id') as send, contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(bot.run(args, sources=[SOURCE]), 0)
+                self.assertEqual(len(list((root / 'results').glob('*.json'))), 2)
+                self.assertFalse((root / 'state/state.json').exists())
+                self.assertEqual(bot.run(args, sources=[SOURCE]), 0)
+                self.assertEqual(process.call_count, 2)
+                send.assert_not_called()
+                local_history = (root / 'state/local-state.json').read_bytes()
+                # Adding Discord later must not lose articles that were only saved locally.
+                args.local = False
+                with patch.dict(os.environ, DISCORD_WEBHOOK_URL='fake'):
+                    self.assertEqual(bot.run(args, sources=[SOURCE]), 0)
+                    self.assertEqual(send.call_count, 2)
+                self.assertEqual((root / 'state/local-state.json').read_bytes(), local_history)
+            for path in (root / 'results').glob('*.json'):
+                saved = json.loads(path.read_text())
+                self.assertEqual(saved['delivery'], 'local')
+                self.assertIn('saved_at', saved)
+            self.assertFalse(list((root / 'results').glob('*.tmp')))
+
+    def test_failed_local_write_is_retried_without_recording_delivery(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            args = SimpleNamespace(check_feeds=False, dry_run=False, local=True)
+            with patch.object(bot, 'ROOT', root), patch.dict(os.environ, DISCORD_WEBHOOK_URL=''), patch.object(bot, 'fetch', return_value=(200, feed('one'), {}, '')), patch.object(bot, 'article_report', return_value={'ai_status': '', 'analysis': None}), patch.object(bot, 'publish_local', side_effect=OSError), patch.object(bot, 'send_discord') as send, contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(bot.run(args, sources=[SOURCE]), 1)
+                send.assert_not_called()
+            state = json.loads((root / 'state/local-state.json').read_text())
+            self.assertEqual(state['seen'], {})
+            self.assertEqual(len(state['pending']), 1)
+            self.assertIn('retry_after', next(iter(state['pending'].values())))
+
+    def test_local_preview_does_not_publish_or_mark_articles_delivered(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            args = SimpleNamespace(check_feeds=False, dry_run=True, local=True)
+            with patch.object(bot, 'ROOT', root), patch.dict(os.environ, AI_PROVIDER='none'), patch.object(bot, 'fetch', return_value=(200, feed('one'), {}, '')), patch.object(bot, 'article_report', side_effect=lambda source, entry: bot.make_report(entry, 'Article text. ' * 30, 'HTML')), patch.object(bot, 'send_discord') as send, contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(bot.run(args, sources=[SOURCE]), 0)
+                send.assert_not_called()
+            self.assertFalse((root / 'results').exists())
+            self.assertFalse((root / 'state/local-state.json').exists())
+            self.assertEqual(len(list((root / 'preview').glob('*.json'))), 1)
+
     def test_normal_run_checks_every_source_sends_all_unsent_and_remembers_restart(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

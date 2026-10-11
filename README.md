@@ -2,9 +2,11 @@
 
 Download the Windows installer or portable ZIP from [GitHub Releases](https://github.com/nullglobdev/osint-digest/releases/latest).
 
-**Windows desktop app:** a rounded navy workspace with Dark/Light/Windows themes, text scaling, and keyboard/accessibility features; graphical setup for Gemini, OpenAI, Claude, or Ollama; provider model discovery; editable RSS/Atom sources; AI previews; delivery history and limited Test mode; and automatic checks every 15–360 minutes with system-tray support. See [DESKTOP.md](docs/DESKTOP.md) for installation and build instructions and [ACCESSIBILITY.md](docs/ACCESSIBILITY.md) for accessibility features and validation status. The desktop installer bundles Python; the CLI instructions below remain supported.
+**Windows desktop app:** a compact rounded navy workspace with a searchable Results tab; local publishing when the Discord webhook is blank; provider model discovery; editable RSS/Atom sources; and automatic checks every 15–360 minutes with system-tray support. Appearance and accessibility controls are in Preferences. The Dashboard article limit applies per source; normal collection uses only articles published in the last 48 hours and skips prior deliveries. Preview tools and resends require Dev mode, with an adjustable test timeframe of 1-365 days. See [DESKTOP.md](docs/DESKTOP.md) for installation and build instructions and [ACCESSIBILITY.md](docs/ACCESSIBILITY.md) for accessibility features and validation status. The desktop installer bundles Python; the CLI instructions below remain supported.
 
-**Server container:** run continuously without a GUI using Docker Compose, with interactive terminal setup/settings, provider model discovery, custom sources, persistent delivery history, and checks every 15–360 minutes. No Python installation or exposed ports are needed on the host. See [CONTAINER.md](docs/CONTAINER.md).
+**Server container:** run continuously without a GUI using Docker Compose, with interactive terminal setup/settings, multiple named Discord webhooks, provider model discovery, custom sources, delivery history and retries for each webhook, and checks every 15–360 minutes. The server uses the same per-source article limit and 48-hour publication window as Windows. No Python installation or exposed ports are needed on the host. See [CONTAINER.md](docs/CONTAINER.md).
+
+**Article filters:** the Windows **Filters** tab and server filter menu offer seven independent scopes: Sector, Threat actor, Social engineering, Access & exploitation, Malware & impact, Other styles, and Education combinations. Each defaults to **All**. Every active scope must match before AI analysis or publishing; aliases within an option are alternatives. See [SCOPES.md](docs/SCOPES.md) for the complete catalog and CLI flags. Windows Results opens article, CVE, and ATT&CK links in your default browser.
 
 | Deployment | Setup and management | Runs while |
 |---|---|---|
@@ -58,7 +60,7 @@ Run all tests from the repository root with `python -m unittest discover -s test
 
 There is no dependable promise of permanently free automated Claude/OpenAI API use. Consumer chat access is not a substitute for an API account. This project does not automate consumer chat websites or reuse their session cookies.
 
-Use the desktop for a personal PC or the container for an always-on server. Start with publisher excerpts (`none`) and a local preview, then configure your AI provider. The original CLI scheduling options below remain available.
+Use the desktop for a personal PC or the container for an always-on server. On desktop, start with publisher excerpts and a blank webhook to collect into Results, then configure your AI provider or Discord. The original CLI scheduling options below remain available.
 
 ## What each post contains
 
@@ -134,7 +136,9 @@ To change sources, edit `config/sources.json`. Set `enabled` to false to disable
 
 On macOS/Linux, use `python3` instead of `py -3`; the rest is the same.
 
-## Normal collection and limited tests
+## Original CLI: normal collection and limited tests
+
+The desktop and server apply their saved **Articles per source** limit and a **48-hour publication window** to normal collection. Dev previews, AI tests, and manual resend tests can choose a lookback of 1-365 days; normal and automatic checks remain unchanged. For a 30-day CLI preview, use `py -3 bot.py --dry-run --max-age-hours 720 --per-source-limit 5`. Sending with a window over 48 hours requires `--test-mode`. The original CLI defaults below remain available; to apply the same rules there, use `py -3 bot.py --per-source-limit 5 --max-age-hours 48`.
 
 With your provider and Discord webhook configured in `.env`, run:
 
@@ -143,6 +147,8 @@ py -3 bot.py
 ```
 
 Normal runs check every enabled source in `config/sources.json`, queue all available URLs without a successful delivery record, and process all eligible pending articles. Processing is sequential, with no article-count cap. Delivery history persists between runs and restarts. A failed source does not prevent the others from being checked; failed articles retain their retry delay.
+
+The optional CLI flag `--local` publishes to `results/` with separate history in `state/local-state.json`, instead of Discord. The desktop selects this destination automatically when its webhook is blank, using its own app-data folder. Developer previews (`--dry-run`) remain separate and do not publish articles.
 
 **First run and upgrades:** available feed articles that have never been delivered are eligible immediately. Older `baseline` records represent unsent articles, so they become eligible if still in a feed. Successfully sent records stay intact. The first normal run can therefore send many articles. Preview with `py -3 bot.py --dry-run`, or use a limited test first.
 

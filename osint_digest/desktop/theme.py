@@ -77,52 +77,52 @@ def stylesheet(theme, base_points):
     QMainWindow, QDialog, QWidget#shell, QScrollArea, QScrollArea > QWidget > QWidget {{ background: {c['background']}; }}
     QLabel {{ background: transparent; }}
     QLabel[role="muted"], QLabel[role="kicker"] {{ color: {c['muted']}; }}
-    QLabel[role="title"] {{ font-size: {base_points * 1.85:.1f}pt; font-weight: 650; }}
-    QLabel[role="heading"] {{ font-size: {base_points * 1.3:.1f}pt; font-weight: 600; }}
+    QLabel[role="title"] {{ font-size: {base_points * 1.4:.1f}pt; font-weight: 650; }}
+    QLabel[role="heading"] {{ font-size: {base_points * 1.15:.1f}pt; font-weight: 600; }}
     QLabel[role="kicker"] {{ font-weight: 600; }}
     QLabel[role="accent"] {{ color: {c['accent']}; font-weight: 600; }}
     QLabel[role="error"] {{ color: {c['error']}; }}
     QFrame#hero {{ background: qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 {c['panel']},stop:1 {c['card']});
-                   border: 1px solid {c['border']}; border-radius: 24px; }}
-    QFrame#card, QFrame#footer {{ background: {c['card']}; border: 1px solid {c['border']}; border-radius: 20px; }}
+                   border: 1px solid {c['border']}; border-radius: 12px; }}
+    QFrame#card, QFrame#footer {{ background: {c['card']}; border: 1px solid {c['border']}; border-radius: 12px; }}
     QPushButton {{ background: {c['panel']}; color: {c['text']}; border: 2px solid {c['border']};
-                  border-radius: 13px; padding: 9px 16px; min-height: 22px; }}
+                  border-radius: 8px; padding: 4px 10px; min-height: 18px; }}
     QPushButton:hover {{ border-color: {c['accent']}; }}
     QPushButton[primary="true"], QPushButton:checked {{ background: {c['accent']}; color: {c['on_accent']};
                                                        border-color: {c['accent']}; font-weight: 600; }}
     QPushButton:disabled {{ background: {c['panel']}; color: {c['muted']}; border-color: {c['border']}; }}
-    QPushButton:focus {{ border: 3px dashed {c['focus']}; padding: 8px 15px; }}
-    QLineEdit, QComboBox, QSpinBox, QPlainTextEdit, QListWidget, QTableWidget {{
-        background: {c['field']}; color: {c['text']}; border: 2px solid {c['border']}; border-radius: 12px;
-        padding: 8px; selection-background-color: {c['accent']}; selection-color: {c['on_accent']}; }}
-    QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QPlainTextEdit:focus, QListWidget:focus, QTableWidget:focus {{
-        border: 3px solid {c['focus']}; padding: 7px; }}
+    QPushButton:focus {{ border: 3px dashed {c['focus']}; padding: 3px 9px; }}
+    QLineEdit, QComboBox, QSpinBox, QPlainTextEdit, QTextBrowser, QListWidget, QTableWidget {{
+        background: {c['field']}; color: {c['text']}; border: 2px solid {c['border']}; border-radius: 8px;
+        padding: 4px; selection-background-color: {c['accent']}; selection-color: {c['on_accent']}; }}
+    QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QPlainTextEdit:focus, QTextBrowser:focus, QListWidget:focus, QTableWidget:focus {{
+        border: 3px solid {c['focus']}; padding: 3px; }}
     QLineEdit:disabled, QComboBox:disabled {{ color: {c['muted']}; background: {c['panel']}; }}
     QComboBox {{ padding-right: 30px; }}
     QComboBox::drop-down {{ width: 24px; border: none; }}
     QComboBox::down-arrow {{ image: url("{down}"); width: 18px; height: 18px; }}
     QSpinBox {{ padding-right: 32px; }}
     QSpinBox::up-button {{ subcontrol-origin: border; subcontrol-position: top right; width: 28px;
-                         border-top-right-radius: 12px; background: {c['panel']}; }}
+                         border-top-right-radius: 8px; background: {c['panel']}; }}
     QSpinBox::down-button {{ subcontrol-origin: border; subcontrol-position: bottom right; width: 28px;
-                           border-bottom-right-radius: 12px; background: {c['panel']}; }}
+                           border-bottom-right-radius: 8px; background: {c['panel']}; }}
     QSpinBox::up-arrow {{ image: url("{up}"); width: 16px; height: 16px; }}
     QSpinBox::down-arrow {{ image: url("{down}"); width: 16px; height: 16px; }}
     QComboBox QAbstractItemView {{ background: {c['card']}; color: {c['text']};
         selection-background-color: {c['accent']}; selection-color: {c['on_accent']}; padding: 5px; }}
-    QCheckBox {{ spacing: 10px; padding: 5px; border: 3px solid transparent; border-radius: 10px; }}
+    QCheckBox {{ spacing: 6px; padding: 2px; border: 3px solid transparent; border-radius: 8px; }}
     QCheckBox:focus {{ border-color: {c['focus']}; }}
-    QCheckBox::indicator {{ width: 22px; height: 22px; border: 2px solid {c['border']};
-                           border-radius: 7px; background: {c['field']}; }}
+    QCheckBox::indicator {{ width: 16px; height: 16px; border: 2px solid {c['border']};
+                           border-radius: 5px; background: {c['field']}; }}
     QCheckBox::indicator:checked {{ image: url("{check}"); background: {c['accent']}; border-color: {c['accent']}; }}
     QTabWidget::pane {{ border: none; }}
     QTabBar::tab {{ background: {c['panel']}; color: {c['text']}; border: 2px solid {c['border']};
-                    border-radius: 17px; padding: 10px 20px; margin: 0 6px 10px 0; }}
+                    border-radius: 9px; padding: 6px 12px; margin: 0 4px 5px 0; }}
     QTabBar::tab:selected {{ background: {c['accent']}; color: {c['on_accent']}; border-color: {c['accent']}; font-weight: 600; }}
-    QTabBar::tab:focus {{ border: 3px solid {c['focus']}; padding: 9px 19px; }}
-    QHeaderView::section {{ background: {c['panel']}; color: {c['text']}; border: none; padding: 10px; font-weight: 600; }}
+    QTabBar::tab:focus {{ border: 3px solid {c['focus']}; padding: 5px 11px; }}
+    QHeaderView::section {{ background: {c['panel']}; color: {c['text']}; border: none; padding: 5px; font-weight: 600; }}
     QTableWidget {{ gridline-color: transparent; }}
-    QTableWidget::item, QListWidget::item {{ padding: 8px; border-radius: 6px; }}
+    QTableWidget::item, QListWidget::item {{ padding: 5px; border-radius: 6px; }}
     QTableWidget::item:selected, QListWidget::item:selected {{ background: {c['accent']}; color: {c['on_accent']}; }}
     QTableWidget::item:focus, QListWidget::item:focus {{ border: 2px solid {c['focus']}; }}
     QScrollBar:vertical {{ background: {c['background']}; width: 16px; margin: 0; border-radius: 8px; }}
@@ -144,7 +144,7 @@ class FlowLayout(QLayout):
         super().__init__(parent)
         self.items = []
         self.setContentsMargins(0, 0, 0, 0)
-        self.setSpacing(10)
+        self.setSpacing(6)
 
     def addItem(self, item):
         self.items.append(item)

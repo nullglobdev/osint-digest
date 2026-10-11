@@ -15,8 +15,8 @@ from PySide6.QtGui import (QAccessible, QAccessibleAnnouncementEvent, QFont, QIc
                            QPalette, QShortcut, QTextCursor)
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QFrame, QLabel, QVBoxLayout,
     QHBoxLayout, QGridLayout, QScrollArea, QTabWidget, QPushButton, QLineEdit, QComboBox,
-    QSpinBox, QCheckBox, QPlainTextEdit, QTableWidget, QTableWidgetItem, QHeaderView,
-    QAbstractItemView, QListWidget, QListWidgetItem, QMessageBox, QFileDialog, QDialog,
+    QSpinBox, QCheckBox, QPlainTextEdit, QTableWidget, QTableWidgetItem, QHeaderView, QFormLayout,
+    QAbstractItemView, QMessageBox, QFileDialog, QDialog,
     QDialogButtonBox, QSizePolicy)
 
 from osint_digest.core.collector import error_label
@@ -24,13 +24,15 @@ from osint_digest.core.providers import PROVIDERS, KEY_ENV, PORTALS, list_models
 from osint_digest.desktop.settings import (APP_NAME, VERSION, DEFAULTS, initialize, load_settings, save_settings,
                               atomic_json, resource_path)
 from osint_digest.core.sources import make_source
+from osint_digest.core import scopes
 from osint_digest.desktop.theme import (THEMES, FlowLayout, high_contrast_enabled, windows_palette,
                            palette_for, stylesheet)
 from osint_digest.desktop.tray import Tray
+from osint_digest.desktop.reports import ReportPanel
 from osint_digest.paths import PROJECT_ROOT
 
 TITLES = {'feeds': 'Checking publisher feeds', 'ai': 'Testing AI on a real article',
-          'preview': 'Previewing unsent articles', 'test': 'TEST MODE: sending limited articles; repeats allowed',
+          'preview': 'Previewing unsent articles', 'test': 'TEST MODE: collecting limited articles; repeats allowed',
           'test-preview': 'TEST MODE: previewing limited articles; repeats allowed',
           'new': 'Checking for new articles', 'webhook': 'Checking Discord connection'}
 
@@ -89,9 +91,13 @@ class DigestApp(QMainWindow):
         self.rebuild_sources()
         self.refresh_reports()
         self.update_provider_fields()
-        self.status_message(self.settings_error or ('Ready' if self.settings['webhook'] else 'Start with Connection to set up Discord and AI.'))
-        if not self.settings['webhook'] or self.settings_error:
+        self.last_results_check = 0
+        self.status_message(self.settings_error or 'Ready. Collect new articles or start automatic checks.')
+        if self.settings_error:
             self.tabs.setCurrentIndex(1)
+        self.focus_scroll_timer = QTimer(self)
+        self.focus_scroll_timer.setSingleShot(True)
+        self.focus_scroll_timer.timeout.connect(self.scroll_to_focus)
         self.qapp.focusChanged.connect(self.ensure_focus_visible)
         self.qapp.installEventFilter(self)
         self.qapp.styleHints().colorSchemeChanged.connect(self.platform_theme_changed)
@@ -106,7 +112,7 @@ class DigestApp(QMainWindow):
         self.setWindowIcon(QIcon(str(resource_path('assets/app.ico'))))
         self.setAccessibleName('OSINT Digest threat intelligence workspace')
         screen = self.screen().availableGeometry()
-        self.resize(min(1160, screen.width() - 60), min(940, screen.height() - 60))
+        self.resize(min(1040, screen.width() - 60), min(740, screen.height() - 60))
         self.setMinimumSize(620, 480)
         shell = QWidget()
         shell.setObjectName('shell')
@@ -116,73 +122,52 @@ class DigestApp(QMainWindow):
         self.workspace_scroll.setWidget(shell)
         self.setCentralWidget(self.workspace_scroll)
         outer = QVBoxLayout(shell)
-        outer.setContentsMargins(22, 18, 22, 18)
-        outer.setSpacing(14)
+        outer.setContentsMargins(12, 10, 12, 10)
+        outer.setSpacing(8)
         hero = QFrame()
         hero.setObjectName('hero')
-        top = QVBoxLayout(hero)
-        top.setContentsMargins(24, 18, 24, 18)
-        self.hero_kicker = label('OSINT / THREAT INTELLIGENCE', 'kicker')
-        self.hero_title = label('Intelligence command center', 'title')
-        self.hero_tagline = label('Collect. Analyze. Stay ahead.', 'muted')
-        hero_row = QHBoxLayout()
-        hero_text = QVBoxLayout()
-        for text in (self.hero_kicker, self.hero_title, self.hero_tagline):
-            hero_text.addWidget(text)
-        hero_row.addLayout(hero_text, 1)
+        top = QHBoxLayout(hero)
+        top.setContentsMargins(12, 8, 12, 8)
         self.radar = named(QLabel(), 'OSINT Digest radar illustration')
-        self.radar.setPixmap(QIcon(str(resource_path('assets/radar.svg'))).pixmap(QSize(88, 88)))
-        hero_row.addWidget(self.radar)
-        top.addLayout(hero_row)
-        preferences = QWidget()
-        row = FlowLayout(preferences)
-        self.theme_combo = named(QComboBox(), 'Appearance theme', 'Choose Dark, Light, or Windows. Windows contrast themes take priority.')
-        for title, value in (('Dark', 'dark'), ('Light', 'light'), ('Windows', 'system')):
-            self.theme_combo.addItem(title, value)
-        self.theme_combo.setCurrentIndex(self.theme_combo.findData(self.settings['theme']))
-        self.scale_combo = named(QComboBox(), 'Text size', 'Increase text size up to 200 percent. Ctrl+Plus and Ctrl+Minus also adjust text size.')
-        for scale in (100, 125, 150, 175, 200):
-            self.scale_combo.addItem(f'{scale}%', scale)
-        self.scale_combo.setCurrentIndex(self.scale_combo.findData(self.settings['text_scale']))
-        for title, control in (('Theme', self.theme_combo), ('Text size', self.scale_combo)):
-            group = QWidget()
-            group_row = QHBoxLayout(group)
-            group_row.setContentsMargins(0, 0, 0, 0)
-            title_label = label(title)
-            title_label.setBuddy(control)
-            group_row.addWidget(title_label)
-            group_row.addWidget(control)
-            row.addWidget(group)
-        row.addWidget(self.button('Keyboard help', self.keyboard_help, managed=False))
-        top.addWidget(preferences)
+        self.radar.setPixmap(QIcon(str(resource_path('assets/radar.svg'))).pixmap(QSize(32, 32)))
+        top.addWidget(self.radar)
+        self.hero_title = label('OSINT Digest', 'heading')
+        top.addWidget(self.hero_title)
+        top.addStretch()
+        self.destination = label('', 'accent')
+        top.addWidget(self.destination)
         outer.addWidget(hero)
-        self.tabs = named(QTabWidget(), 'Workspace sections', 'Use Ctrl+1 through Ctrl+4 to switch sections, or focus the tabs and use arrow keys.')
+        self.tabs = named(QTabWidget(), 'Workspace sections', 'Use Ctrl+1 through Ctrl+5 to switch sections. Ctrl+6 opens Previews in Dev mode. Ctrl+7 opens Filters.')
         self.tabs.setDocumentMode(True)
         self.tabs.tabBar().setDrawBase(False)
         self.tabs.setMinimumHeight(320)
         outer.addWidget(self.tabs, 1)
         self.pages = []
-        for title in ('Dashboard', 'Connection', 'Sources', 'Previews'):
+        for title in ('Dashboard', 'Connection', 'Sources', 'Results', 'Preferences', 'Previews', 'Filters'):
             scroll = named(QScrollArea(), title + ' scroll area')
             scroll.setFrameShape(QFrame.Shape.NoFrame)
             scroll.setWidgetResizable(True)
             body = QWidget()
             layout = QVBoxLayout(body)
-            layout.setContentsMargins(2, 6, 12, 8)
-            layout.setSpacing(16)
+            layout.setContentsMargins(0, 2, 6, 2)
+            layout.setSpacing(10)
             scroll.setWidget(body)
             self.tabs.addTab(scroll, title)
             self.pages.append((scroll, layout))
+        self._preferences(self.pages[4][1])
+        self._filters(self.pages[6][1])
         self._dashboard(self.pages[0][1])
         self._connection(self.pages[1][1])
         self._sources(self.pages[2][1])
-        self._reports(self.pages[3][1])
+        self.results_panel = ReportPanel(self.root / 'results')
+        self.pages[3][1].addWidget(self.results_panel, 1)
+        self._reports(self.pages[5][1])
         footer = QFrame()
         footer.setObjectName('footer')
-        footer_layout = QVBoxLayout(footer)
-        footer_layout.setContentsMargins(16, 10, 16, 10)
+        footer_layout = QHBoxLayout(footer)
+        footer_layout.setContentsMargins(10, 6, 10, 6)
         self.status = named(label('Ready'), 'Application status')
-        footer_layout.addWidget(self.status)
+        footer_layout.addWidget(self.status, 1)
         controls = QWidget()
         buttons = FlowLayout(controls)
         self.busy = label('IDLE', 'accent')
@@ -190,16 +175,28 @@ class DigestApp(QMainWindow):
         buttons.addWidget(self.button('Run in background', self.hide_to_tray, managed=False))
         buttons.addWidget(self.button('Exit', self.exit_app, managed=False))
         buttons.addWidget(label(f'v{VERSION}', 'muted'))
-        footer_layout.addWidget(controls)
+        footer_layout.addWidget(controls, 1)
         outer.addWidget(footer)
         self.theme_combo.currentIndexChanged.connect(self.appearance_changed)
         self.scale_combo.currentIndexChanged.connect(self.appearance_changed)
+        self.close_to_tray.toggled.connect(self.save_preferences)
+        self.pause_log.toggled.connect(self.save_preferences)
+        self.per_source_limit.valueChanged.connect(self.save_preferences)
+        self.per_source_limit.valueChanged.connect(self.update_test_mode)
+        for combo in self.scope_controls.values():
+            combo.currentIndexChanged.connect(self.scope_changed)
+        self.apply_scope()
+        self.developer_mode.toggled.connect(self.developer_mode_changed)
+        self.test_mode.toggled.connect(self.update_test_mode)
+        self.test_lookback_days.valueChanged.connect(self.save_preferences)
+        self.test_lookback_days.valueChanged.connect(self.update_test_mode)
+        self.update_developer_mode()
         self.shortcuts = []
         for keys, action in [('Ctrl+S', self.save), ('F1', self.keyboard_help),
                              ('Ctrl++', lambda: self.adjust_scale(1)), ('Ctrl+=', lambda: self.adjust_scale(1)),
                              ('Ctrl+-', lambda: self.adjust_scale(-1)), ('Ctrl+0', lambda: self.scale_combo.setCurrentIndex(0))]:
             self.shortcut(keys, action)
-        for i in range(4):
+        for i in range(7):
             self.shortcut(f'Ctrl+{i + 1}', lambda index=i: self.focus_page(index))
 
     def shortcut(self, keys, action):
@@ -210,7 +207,7 @@ class DigestApp(QMainWindow):
     def button(self, title, command, primary=False, managed=True):
         button = named(QPushButton(title), title)
         button.setProperty('primary', primary)
-        button.setMinimumHeight(44)
+        button.setMinimumHeight(30)
         button.clicked.connect(lambda checked=False: command())
         if managed:
             self.buttons.append(button)
@@ -220,8 +217,8 @@ class DigestApp(QMainWindow):
         frame = named(QFrame(), title)
         frame.setObjectName('card')
         layout = QVBoxLayout(frame)
-        layout.setContentsMargins(22, 20, 22, 20)
-        layout.setSpacing(12)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(7)
         layout.addWidget(label(title, 'heading'))
         if subtitle:
             layout.addWidget(label(subtitle, 'muted'))
@@ -254,38 +251,38 @@ class DigestApp(QMainWindow):
         pair = QWidget()
         self.dashboard_grid = QGridLayout(pair)
         self.dashboard_grid.setContentsMargins(0, 0, 0, 0)
-        self.dashboard_grid.setSpacing(16)
+        self.dashboard_grid.setSpacing(10)
         page.addWidget(pair)
-        batch = self.card(self.dashboard_grid, 'Launch your intelligence digest', 'Check every enabled source and deliver all articles that have not been sent.')
+        batch = self.card(self.dashboard_grid, 'Collect articles')
+        self.collection_description = label('', 'muted')
+        batch.addWidget(self.collection_description)
         self.batch_card = batch.parentWidget()
-        self.test_mode = named(QCheckBox('Test mode: allow repeats with an article limit'),
-                               'Test mode: allow repeats with an article limit',
-                               'Applies to manual Send and Preview only. Off each time the app opens.')
-        batch.addWidget(self.test_mode)
-        self.batch_size = QSpinBox()
-        self.batch_size.setRange(1, 20)
-        self.batch_size.setValue(self.settings['batch_size'])
-        self.field(batch, 'Test article limit', self.batch_size, 'Maximum 1 to 20 articles in Test mode only.')
         self.selected_count = label('', 'accent')
         batch.addWidget(self.selected_count)
-        self.send_button, self.preview_button, _ = self.actions(batch, [
-            ('Check all and send new', lambda: self.start('test' if self.test_mode.isChecked() else 'new'), True),
-            ('Preview unsent articles', lambda: self.start('test-preview' if self.test_mode.isChecked() else 'preview'), False),
+        self.per_source_limit = QSpinBox()
+        self.per_source_limit.setRange(1, 100)
+        self.per_source_limit.setValue(self.settings['per_source_limit'])
+        self.field(batch, 'Articles per source', self.per_source_limit,
+                   'Maximum articles per source per check, from 1 to 100. Applies to manual and automatic checks, previews, and Dev mode resends.')
+        self.filter_summary = label('', 'muted')
+        batch.addWidget(self.filter_summary)
+        batch.addWidget(self.button('Article filters', lambda: self.focus_page(6), managed=False))
+        self.send_button, self.preview_button, self.ai_test_button = self.actions(batch, [
+            ('Collect new', lambda: self.start('test' if self.test_mode.isChecked() else 'new'), True),
+            ('Preview', lambda: self.start('test-preview' if self.test_mode.isChecked() else 'preview'), False),
             ('Test AI', lambda: self.start('ai'), False)])
         self.send_button.setAccessibleName('')
         self.preview_button.setAccessibleName('')
         self.test_status = label('', 'muted')
         batch.addWidget(self.test_status)
-        self.test_mode.toggled.connect(self.update_test_mode)
         self.update_test_mode()
-        auto = self.card(self.dashboard_grid, 'Continuous monitoring', 'Watch selected feeds for new research while your PC is awake.')
+        auto = self.card(self.dashboard_grid, 'Automatic checks')
         self.auto_card = auto.parentWidget()
         self.interval = QSpinBox()
         self.interval.setRange(15, 360)
         self.interval.setSuffix(' minutes')
         self.interval.setValue(self.settings['interval_minutes'])
         self.field(auto, 'Check every', self.interval, 'Automatic check interval: 15 to 360 minutes.')
-        self.actions(auto, [('Check and send new', lambda: self.start('new'), False)])
         self.auto_button = self.button('Start automatic checks', self.toggle_monitor, managed=False)
         # Let Qt derive the accessible name from the changing Start/Stop label.
         self.auto_button.setAccessibleName('')
@@ -293,33 +290,132 @@ class DigestApp(QMainWindow):
         auto.addWidget(self.auto_button)
         self.monitor_status = label('Automatic checks are off', 'accent')
         auto.addWidget(self.monitor_status)
-        self.close_to_tray = named(QCheckBox('Keep running in the tray when I close the window'), 'Keep running in the tray when I close the window')
-        self.close_to_tray.setChecked(self.settings['close_to_tray'])
-        self.close_to_tray.toggled.connect(self.save_preferences)
-        auto.addWidget(self.close_to_tray)
-        auto.addWidget(label('Automatic checks always send unsent articles, even when manual Test mode is on. Use Exit to stop the app completely.', 'muted'))
-        activity = self.card(page, 'Activity', 'Task progress and results. Pause updates to read at your own pace.')
+        auto.addWidget(label('Always checks for new articles. The PC must be awake and online.', 'muted'))
+        activity = self.card(page, 'Activity')
         self.actions(activity, [('Check feeds', lambda: self.start('feeds'), False)])
-        self.pause_log = named(QCheckBox('Pause live activity updates'), 'Pause live activity updates', 'Pause the display while reading. Collection and delivery continue.')
-        activity.addWidget(self.pause_log)
         self.activity = self.text_area('Activity log', 'Read-only task output. Tab moves to the next control; Ctrl+A and Ctrl+C copy text.')
         activity.addWidget(self.activity)
-        self.set_text(self.activity, 'Ready. Set up your connection and preview your first digest.')
+        self.set_text(self.activity, 'Ready. Leave the webhook blank to publish in Results, or add one in Connection to send to Discord.')
+        page.setStretch(1, 1)
+
+    def _filters(self, page):
+        card = self.card(page, 'Article filters', 'Choose one option per scope. An article must match every selected scope before AI analysis and publishing. All adds no restriction.')
+        form = QFormLayout()
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        form.setHorizontalSpacing(18)
+        form.setVerticalSpacing(10)
+        self.scope_controls = {}
+        for key, choices in scopes.CHOICES.items():
+            combo = QComboBox()
+            combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+            combo.setMinimumContentsLength(22)
+            named(combo, 'Sector scope' if key == 'sector_scope' else scopes.LABELS[key],
+                  'Choose one option, or All for no restriction. Selection saves immediately and also filters Results and Previews.')
+            for value, title in choices.items():
+                combo.addItem(title, value)
+            combo.setCurrentIndex(combo.findData(self.settings[key]))
+            title = label(scopes.LABELS[key].replace('&', '&&'))
+            title.setBuddy(combo)
+            form.addRow(title, combo)
+            self.scope_controls[key] = combo
+        self.sector_scope = self.scope_controls['sector_scope']
+        card.addLayout(form)
+        self.actions(card, [('View selected keywords', self.show_scope_keywords, False),
+                            ('Reset all filters', self.reset_filters, False)])
+        card.addWidget(label('Synonyms are alternatives within an option. Education combinations require both concepts anywhere in the article. These filters match keywords, not confirmed actor attribution. Date windows and article limits still apply.', 'muted'))
         page.addStretch()
+
+    def _preferences(self, page):
+        appearance = self.card(page, 'Appearance and accessibility')
+        self.theme_combo = named(QComboBox(), 'Appearance theme', 'Dark, Light, or Windows. Windows contrast themes take priority.')
+        for title, value in (('Dark', 'dark'), ('Light', 'light'), ('Windows', 'system')):
+            self.theme_combo.addItem(title, value)
+        self.theme_combo.setCurrentIndex(self.theme_combo.findData(self.settings['theme']))
+        self.scale_combo = named(QComboBox(), 'Text size', 'Increase text size up to 200 percent. Ctrl+Plus and Ctrl+Minus also adjust text size.')
+        for scale in (100, 125, 150, 175, 200):
+            self.scale_combo.addItem(f'{scale}%', scale)
+        self.scale_combo.setCurrentIndex(self.scale_combo.findData(self.settings['text_scale']))
+        fields = QWidget()
+        row = FlowLayout(fields)
+        for title, control in (('Theme', self.theme_combo), ('Text size', self.scale_combo)):
+            group = QWidget()
+            group_row = QHBoxLayout(group)
+            group_row.setContentsMargins(0, 0, 0, 0)
+            title_label = label(title)
+            title_label.setBuddy(control)
+            group_row.addWidget(title_label)
+            group_row.addWidget(control)
+            row.addWidget(group)
+        row.addWidget(self.button('Keyboard help', self.keyboard_help, managed=False))
+        appearance.addWidget(fields)
+        self.pause_log = named(QCheckBox('Pause live activity updates'), 'Pause live activity updates', 'Pause the Activity log display while reading. Collection and delivery continue.')
+        self.pause_log.setChecked(self.settings['pause_log'])
+        appearance.addWidget(self.pause_log)
+        behavior = self.card(page, 'Background behavior')
+        self.close_to_tray = named(QCheckBox('Keep running in the tray when I close the window'), 'Keep running in the tray when I close the window')
+        self.close_to_tray.setChecked(self.settings['close_to_tray'])
+        behavior.addWidget(self.close_to_tray)
+        behavior.addWidget(label('Exit stops future checks and lets any active task finish.', 'muted'))
+        developer = self.card(page, 'Developer tools')
+        self.developer_mode = named(QCheckBox('Enable Dev mode'), 'Enable Dev mode', 'Show preview tools and AI tests. Previews use AI quota but do not publish articles.')
+        self.developer_mode.setChecked(self.settings['developer_mode'])
+        developer.addWidget(self.developer_mode)
+        developer.addWidget(label('Previews and AI tests are available only in Dev mode.', 'muted'))
+        self.test_controls = QWidget()
+        test_layout = QVBoxLayout(self.test_controls)
+        test_layout.setContentsMargins(0, 0, 0, 0)
+        self.test_lookback_days = QSpinBox()
+        self.test_lookback_days.setRange(1, 365)
+        self.test_lookback_days.setSuffix(' days')
+        self.test_lookback_days.setValue(self.settings['test_lookback_days'])
+        self.field(test_layout, 'Test article timeframe', self.test_lookback_days,
+                   'Look back 1 to 365 days for Preview, Test AI, and Collect test articles. Saves immediately. Normal collection and automatic checks use 48 hours.')
+        test_layout.addWidget(label('Look back this many days for Preview, Test AI, and Collect test articles. Only articles still available in publisher feeds can be retrieved. Collect new and automatic checks keep the 48-hour window.', 'muted'))
+        self.test_mode = named(QCheckBox('Allow resends for manual tests'), 'Allow resends for manual tests',
+                               'Enables Collect test articles with the selected test timeframe and Dashboard limit per source. Automatic checks always skip delivered articles. Off each time the app opens.')
+        test_layout.addWidget(self.test_mode)
+        developer.addWidget(self.test_controls)
+        page.addStretch()
+
+    def developer_mode_changed(self):
+        self.update_developer_mode()
+        self.save_preferences()
+
+    def update_developer_mode(self):
+        enabled = self.developer_mode.isChecked()
+        if not enabled:
+            self.test_mode.setChecked(False)
+            if self.tabs.currentIndex() == 5:
+                self.focus_page(4)
+        self.tabs.setTabVisible(5, enabled)
+        self.preview_button.setVisible(enabled)
+        self.ai_test_button.setVisible(enabled)
+        self.test_controls.setVisible(enabled)
+        if enabled:
+            self.preview_panel.refresh()
+        self.update_test_mode()
 
     def update_test_mode(self):
         testing = self.test_mode.isChecked()
-        self.batch_size.setEnabled(testing)
-        self.send_button.setText('Send test articles' if testing else 'Check all and send new')
-        self.preview_button.setText('Preview test articles' if testing else 'Preview unsent articles')
-        self.test_status.setText('TEST MODE: manual tasks can repeat sent articles, up to the test limit.' if testing else
-                                'Normal mode: all enabled sources, all unsent articles, no article limit.')
+        self.send_button.setText('Collect test articles' if testing else 'Collect new')
+        self.preview_button.setText('Preview test articles' if testing else 'Preview')
+        mode = 'DEV MODE: resends allowed' if testing else 'Skip previously delivered articles'
+        window = f'{self.test_lookback_days.value()} days' if testing else '48 hours'
+        self.collection_description.setText(f'Check all enabled sources for articles published in the last {window}.')
+        self.test_status.setText(f'{mode}. Up to {self.per_source_limit.value()} per source; newest first, last {window}.')
+        self.preview_button.setToolTip(f'Preview eligible articles from the last {self.test_lookback_days.value()} days using the selected scope and per-source limit.')
+        self.ai_test_button.setToolTip(f'Test AI on an eligible article from the last {self.test_lookback_days.value()} days.')
+        webhook = self.webhook_entry.text().strip() if hasattr(self, 'webhook_entry') else self.settings['webhook']
+        self.destination.setText('Publish to Discord' if webhook else 'Publish in Results')
 
     def _connection(self, page):
         form = self.card(page, 'Connect your workspace', 'Credentials are encrypted for your Windows account. Each provider keeps its own key and model.')
         self.webhook_entry = QLineEdit(self.settings['webhook'])
         self.webhook_entry.setEchoMode(QLineEdit.EchoMode.Password)
-        self.field(form, 'Discord webhook URL', self.webhook_entry, 'Copy a webhook URL from Discord channel settings, Integrations, Webhooks.')
+        self.field(form, 'Discord webhook URL', self.webhook_entry, 'Optional. Leave blank to publish articles in the Results tab. Add a webhook to send to Discord.')
+        self.webhook_entry.setPlaceholderText('Optional — leave blank to publish in Results')
+        self.webhook_entry.textChanged.connect(self.update_test_mode)
         self.provider = QComboBox()
         for title, value in PROVIDERS.items():
             self.provider.addItem(title, value)
@@ -379,23 +475,15 @@ class DigestApp(QMainWindow):
         page.addStretch()
 
     def _reports(self, page):
-        body = self.card(page, 'Review before delivery', 'Previews stay on this PC. Creating a preview does not send a Discord message.')
-        self.actions(body, [('Refresh previews', self.refresh_reports, False)])
-        self.report_list = named(QListWidget(), 'Article previews', 'Use arrow keys to select an article. Its full preview appears in the next text area.')
-        self.report_list.setMinimumHeight(160)
-        self.report_list.currentRowChanged.connect(self.show_report)
-        body.addWidget(self.report_list)
-        self.report_text = self.text_area('Selected article preview', 'Read-only article analysis. Links and extracted identifiers are available as text.')
-        self.report_text.setMinimumHeight(300)
-        body.addWidget(self.report_text)
-        self.set_text(self.report_text, 'Use Test AI or Preview to create a preview.')
-        page.addStretch()
+        page.addWidget(label('Developer previews do not publish articles or change delivery history.', 'muted'))
+        self.preview_panel = ReportPanel(self.root / 'preview', preview=True)
+        page.addWidget(self.preview_panel, 1)
 
     def text_area(self, name, description):
         widget = named(QPlainTextEdit(), name, description)
         widget.setReadOnly(True)
         widget.setTabChangesFocus(True)
-        widget.setMinimumHeight(180)
+        widget.setMinimumHeight(120)
         return widget
 
     @staticmethod
@@ -421,10 +509,18 @@ class DigestApp(QMainWindow):
             QAccessible.updateAccessibility(QAccessibleAnnouncementEvent(self.status, text))
 
     def focus_page(self, index):
+        if not self.tabs.isTabVisible(index):
+            return
         self.tabs.setCurrentIndex(index)
         self.tabs.tabBar().setFocus()
 
     def ensure_focus_visible(self, old, current):
+        self.scroll_to_focus()
+        # Wrapping form rows can settle after the focus event during scaling.
+        self.focus_scroll_timer.start(0)
+
+    def scroll_to_focus(self):
+        current = self.qapp.focusWidget()
         if current and (current.window() is self or current.window().parent() is self):
             ancestor = current.parentWidget()
             while ancestor:
@@ -451,7 +547,7 @@ class DigestApp(QMainWindow):
             font = QFont(self.system_font)
             points = max(1, font.pointSizeF())
             if mode != 'system' and not self.high_contrast:
-                points = max(11, points)
+                points = max(9, points)
             font.setPointSizeF(points * scale)
             self.setFont(font)
             if self.high_contrast or mode == 'system':
@@ -460,22 +556,21 @@ class DigestApp(QMainWindow):
             else:
                 self.qapp.setPalette(palette_for(THEMES[mode]))
                 self.qapp.setStyleSheet(stylesheet(mode, points * scale))
-            self.source_list.verticalHeader().setDefaultSectionSize(max(44, int(points * scale * 3.5)))
+            for panel in (self.results_panel, self.preview_panel):
+                panel.update_link_colors(self.qapp.palette().color(QPalette.ColorRole.Link))
+            self.source_list.verticalHeader().setDefaultSectionSize(max(30, int(points * scale * 2.8)))
             self.update_compact_header()
         finally:
             self._applying_theme = False
 
     def update_compact_header(self):
-        compact = self.width() < 900 or self.scale_combo.currentData() >= 150
-        self.hero_kicker.setVisible(not compact)
-        self.hero_tagline.setVisible(not compact)
+        compact = self.width() < 800 or self.scale_combo.currentData() >= 150
         self.radar.setVisible(not compact)
-        self.hero_title.setText('OSINT Digest' if compact else 'Intelligence command center')
-        self.hero_title.setProperty('role', 'heading' if compact else 'title')
-        self.hero_title.style().unpolish(self.hero_title)
-        self.hero_title.style().polish(self.hero_title)
+        for name in ('results_panel', 'preview_panel'):
+            if hasattr(self, name):
+                getattr(self, name).set_compact(compact)
         if hasattr(self, 'auto_card'):
-            wide = self.width() >= 1050 and self.scale_combo.currentData() == 100
+            wide = self.width() >= 900 and self.scale_combo.currentData() == 100
             self.dashboard_grid.removeWidget(self.batch_card)
             self.dashboard_grid.removeWidget(self.auto_card)
             self.dashboard_grid.addWidget(self.batch_card, 0, 0)
@@ -503,12 +598,57 @@ class DigestApp(QMainWindow):
         try:
             saved = load_settings(self.root)
             for key, value in (('theme', self.theme_combo.currentData()), ('text_scale', self.scale_combo.currentData()),
-                               ('close_to_tray', self.close_to_tray.isChecked())):
+                               ('close_to_tray', self.close_to_tray.isChecked()), ('pause_log', self.pause_log.isChecked()),
+                               ('developer_mode', self.developer_mode.isChecked()), ('per_source_limit', self.per_source_limit.value()),
+                               ('sector_scope', self.sector_scope.currentData()), ('test_lookback_days', self.test_lookback_days.value())):
                 saved[key] = self.settings[key] = value
+            saved.update(self.selected_filters())
+            self.settings.update(self.selected_filters())
             save_settings(self.root, saved)
-            self.status_message('Appearance and background preferences saved.')
+            self.status_message('Settings saved.')
         except Exception:
             self.status_message('Preference changed for this session. Unable to save it to the app data folder.')
+
+    def apply_scope(self):
+        selected = self.selected_filters()
+        self.results_panel.set_filters(selected)
+        self.preview_panel.set_filters(selected)
+        count = sum(bool(value) for value in selected.values())
+        self.filter_summary.setText(f'{count} active scope' + ('s' if count != 1 else '') + ' — all must match' if count else 'All articles — no scope filters')
+        self.filter_summary.setToolTip(scopes.describe(selected))
+
+    def selected_filters(self):
+        return {key: combo.currentData() for key, combo in self.scope_controls.items()}
+
+    def reset_filters(self):
+        for combo in self.scope_controls.values():
+            combo.blockSignals(True)
+            combo.setCurrentIndex(0)
+            combo.blockSignals(False)
+        self.scope_changed()
+
+    def scope_changed(self):
+        self.apply_scope()
+        self.save_preferences()
+        if self.process:
+            self.status_message('Filters saved for the next task. The active task keeps its original filters.')
+
+    def show_scope_keywords(self):
+        selected = self.selected_filters()
+        dialog = QDialog(self)
+        dialog.setWindowTitle('Selected filter keywords')
+        dialog.resize(600, 420)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(label('All selected scopes must match', 'heading'))
+        text = self.text_area('Scope keyword list', 'Read-only keywords used to filter article title and body before AI analysis.')
+        text.setPlainText('\n\n'.join(scopes.LABELS[key] + ': ' + scopes.CHOICES[key][value] + '\n' + scopes.keywords(key, value)
+                                    for key, value in selected.items()))
+        layout.addWidget(text, 1)
+        layout.addWidget(label('OR separates alternatives; + requires all terms in the article. Words and phrases use word boundaries and common plurals. Parentheses require the stated context.', 'muted'))
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.exec()
 
     def keyboard_help(self):
         dialog = QDialog(self)
@@ -520,7 +660,10 @@ class DigestApp(QMainWindow):
             'Tab / Shift+Tab: move between controls. Focus stays visible when pages scroll.\n'
             'Space: activate buttons and checkboxes; enable or disable a selected source.\n'
             'Arrow keys: navigate tabs, models, source rows, and previews.\n'
-            'Ctrl+1 to Ctrl+4: Dashboard, Connection, Sources, Previews.\n'
+            'Article reader: Tab through article, CVE, and ATT&CK links; Enter opens the focused link in your browser.\n'
+            'Ctrl+1 to Ctrl+5: Dashboard, Connection, Sources, Results, Preferences.\n'
+            'Ctrl+6: Previews (Dev mode only).\n'
+            'Ctrl+7: Article filters.\n'
             'Ctrl+S: save connection and source changes.\n'
             'Ctrl+Plus / Ctrl+Minus: resize text. Ctrl+0: reset to 100%.\n'
             'F1: open this help. Escape: cancel a dialog.\n\n'
@@ -701,9 +844,12 @@ class DigestApp(QMainWindow):
             self.remember_provider()
             value = {**self.settings, 'provider': self.active_provider, 'api_key': self.key_entry.text().strip(),
                      'model': self.model_combo.currentText().strip(), 'webhook': self.webhook_entry.text().strip(),
-                     'profiles': deepcopy(self.profiles), 'batch_size': self.batch_size.value(),
+                     'profiles': deepcopy(self.profiles), 'per_source_limit': self.per_source_limit.value(),
+                     **self.selected_filters(),
                      'interval_minutes': self.interval.value(), 'close_to_tray': self.close_to_tray.isChecked(),
-                     'theme': self.theme_combo.currentData(), 'text_scale': self.scale_combo.currentData()}
+                     'theme': self.theme_combo.currentData(), 'text_scale': self.scale_combo.currentData(),
+                     'developer_mode': self.developer_mode.isChecked(), 'pause_log': self.pause_log.isChecked(),
+                     'test_lookback_days': self.test_lookback_days.value()}
             if not any(s.get('enabled', True) for s in self.sources):
                 self.focus_page(2)
                 raise ValueError('Enable at least one source.')
@@ -757,14 +903,17 @@ class DigestApp(QMainWindow):
             self.status_message('Unable to read that connection file or provider.')
 
     def start(self, action):
+        if action in ('ai', 'preview', 'test', 'test-preview') and not self.developer_mode.isChecked():
+            self.status_message('Enable Dev mode in Preferences to use previews and AI tests.')
+            return False
         if action in ('test', 'test-preview') and not self.test_mode.isChecked():
-            self.status_message('Enable Test mode to allow repeated and limited articles.')
+            self.status_message('Enable Allow resends in Preferences to collect test articles using the selected test timeframe.')
             return False
         if self.process or self.quit_pending or not self.save():
             return False
         value = self.settings
         error, field = None, self.webhook_entry
-        if action in ('test', 'new', 'webhook') and not value['webhook']:
+        if action == 'webhook' and not value['webhook']:
             error = 'Add your Discord webhook URL first.'
         elif action not in ('feeds', 'webhook') and value['provider'] in KEY_ENV and not value['api_key']:
             error, field = 'Add the selected provider\'s AI API key first.', self.key_entry
@@ -828,6 +977,9 @@ class DigestApp(QMainWindow):
     def poll(self):
         if not self.alive:
             return
+        if time.monotonic() - self.last_results_check > 2:
+            self.last_results_check = time.monotonic()
+            self.results_panel.refresh()
         if time.monotonic() - self.last_platform_check > 2:
             self.last_platform_check = time.monotonic()
             platform = windows_palette(self.system_palette)
@@ -867,45 +1019,9 @@ class DigestApp(QMainWindow):
                 self.stop_checks()
 
     def refresh_reports(self):
-        selected = self.report_list.currentItem()
-        previous = selected.data(Qt.ItemDataRole.UserRole) if selected else None
-        self.report_list.blockSignals(True)
-        self.report_list.clear()
-        paths = sorted((self.root / 'preview').glob('*.json'), key=lambda p: p.stat().st_mtime, reverse=True)
-        selection = 0
-        for path in paths:
-            try:
-                report = json.loads(path.read_text(encoding='utf-8'))
-                item = QListWidgetItem(f'{report["source"]} — {report["title"]}')
-                item.setData(Qt.ItemDataRole.UserRole, str(path))
-                self.report_list.addItem(item)
-                if str(path) == previous:
-                    selection = self.report_list.count() - 1
-            except (OSError, ValueError, KeyError):
-                continue
-        self.report_list.blockSignals(False)
-        if self.report_list.count():
-            self.report_list.setCurrentRow(selection)
-
-    def show_report(self, row=None):
-        selected = self.report_list.currentItem()
-        if not selected:
-            return
-        try:
-            report = json.loads(Path(selected.data(Qt.ItemDataRole.UserRole)).read_text(encoding='utf-8'))
-            lines = [report['title'], report['url'], '', report['ai_status'], '']
-            if report.get('analysis'):
-                for key, title in (('summary', 'SUMMARY'), ('affected', 'AFFECTED'), ('actors', 'ACTORS / MALWARE'),
-                                   ('techniques', 'TECHNIQUES'), ('actions', 'RECOMMENDATIONS')):
-                    lines += [title] + [claim['text'] for claim in report['analysis'].get(key, [])] + ['']
-            else:
-                lines += ['PUBLISHER EXCERPT', report.get('publisher_excerpt', ''), '']
-            lines += ['CVEs: ' + (', '.join(report.get('cves', [])) or 'None mentioned'),
-                      'ATT&CK: ' + (', '.join(report.get('attack_ids', [])) or 'None mentioned'),
-                      f'IOC candidates: {len(report.get("iocs", []))}']
-            self.set_text(self.report_text, '\n'.join(lines))
-        except (OSError, ValueError, KeyError):
-            self.set_text(self.report_text, 'This preview could not be opened. Generate a new preview to replace it.')
+        self.results_panel.refresh()
+        if self.developer_mode.isChecked():
+            self.preview_panel.refresh()
 
     def hide_to_tray(self):
         if not self.tray:
@@ -941,6 +1057,7 @@ class DigestApp(QMainWindow):
             return
         self.alive = False
         self.timer.stop()
+        self.focus_scroll_timer.stop()
         if self.tray:
             self.tray.stop()
         self.force_close = True

@@ -16,8 +16,10 @@ import urllib.request
 
 from osint_digest.core import collector as bot
 from osint_digest.core.providers import NoRedirect
+from osint_digest.core import scopes
+from osint_digest.server.delivery import WebhookDelivery
 from osint_digest.server.settings import (BusyError, SettingsError, atomic_json, configured_environment,
-                             file_lock, initialize, load_config, require_ready)
+                             file_lock, initialize, load_config, require_ready, active_webhooks)
 
 ACTIONS = ('check-feeds', 'test-ai', 'preview', 'batch', 'new', 'test-discord')
 
@@ -33,7 +35,10 @@ def log(text):
 class RedactedStream:
     def __init__(self, stream, config):
         self.stream = stream
-        self.secrets = [config['webhook'], *(p.get('api_key', '') for p in config['profiles'].values())]
+        self.secrets = [*(t['url'] for t in config['webhooks']),
+                        *(t['url'].rsplit('/', 1)[-1] for t in config['webhooks']),
+                        *(p.get('api_key', '') for p in config['profiles'].values())]
+        self.secrets.sort(key=len, reverse=True)
 
     def write(self, text):
         for secret in self.secrets:
@@ -45,21 +50,27 @@ class RedactedStream:
         self.stream.flush()
 
 
-def run_action(root, action, count=None, source='*', stop=None, *, test_mode=False):
+def run_action(root, action, count=None, source='*', stop=None, *, test_mode=False, test_days=None):
     if action not in ACTIONS:
         raise SettingsError('Unknown collector action.')
     if (count is not None or action == 'batch') and not test_mode:
-        raise SettingsError('Limited or repeat articles require --test-mode. Use new for all unsent articles.')
+        raise SettingsError('Manual count overrides and repeat articles require --test-mode. Use new for the saved per-source limit.')
     if test_mode and action not in ('new', 'batch', 'preview'):
         raise SettingsError('Test mode applies only to new, preview, or batch.')
+    if test_days is not None:
+        if type(test_days) is not int or not 1 <= test_days <= 365:
+            raise SettingsError('Test timeframe must be 1-365 days.')
+        if action not in ('preview', 'test-ai') and not test_mode:
+            raise SettingsError('--test-days requires preview, test-ai, or --test-mode; normal checks use 48 hours.')
+    max_age_hours = 48 if test_days is None else test_days * 24
     stop = stop or threading.Event()
     # Shares the collector lock with other server commands using this volume.
     with file_lock(root / '.run.lock'):
         config, _ = load_config(root)
         require_ready(config, action)
-        count = (config['max_posts'] if count is None else count) if test_mode else None
-        if count is not None and not 1 <= count <= 20:
-            raise SettingsError('Article count must be between 1 and 20.')
+        count = config['per_source_limit'] if count is None else count
+        if type(count) is not int or not 1 <= count <= 100:
+            raise SettingsError('Articles per source must be between 1 and 100.')
         previous_root = bot.ROOT
         try:
             bot.ROOT = root
@@ -67,16 +78,27 @@ def run_action(root, action, count=None, source='*', stop=None, *, test_mode=Fal
             with configured_environment(config), redirect_stdout(RedactedStream(sys.stdout, config)), redirect_stderr(RedactedStream(sys.stderr, config)):
                 log('Starting ' + action)
                 if action == 'test-discord':
-                    request = urllib.request.Request(config['webhook'], headers={'User-Agent': bot.UA})
-                    with urllib.request.build_opener(NoRedirect()).open(request, timeout=20) as response:
-                        code = int(response.status != 200)
-                    print('Discord connection verified. No message sent.' if not code else 'Discord check failed.')
+                    code = 0
+                    for target in active_webhooks(config):
+                        if stop.is_set():
+                            break
+                        try:
+                            request = urllib.request.Request(target['url'], headers={'User-Agent': bot.UA})
+                            with urllib.request.build_opener(NoRedirect()).open(request, timeout=20) as response:
+                                failed = response.status != 200
+                            print(f"Discord [{target['name']}]: " + ('check failed.' if failed else 'connection verified. No message sent.'))
+                            code |= int(failed)
+                        except Exception as error:
+                            code = 1
+                            print(f"Discord [{target['name']}]: {bot.error_label(error)}. No message sent.")
                 else:
                     args = argparse.Namespace(check_feeds=action == 'check-feeds',
                         test_ai=source if action == 'test-ai' else None, dry_run=action == 'preview',
-                        test_mode=test_mode, max_posts=count)
-                    code = bot.run(args, sources=config['sources'], stop_requested=stop.is_set)
-                atomic_json(root / 'last-run.json', {'action': action, 'test_mode': test_mode, 'finished_at': utc(),
+                        test_mode=test_mode, max_posts=None, per_source_limit=count, max_age_hours=max_age_hours,
+                        **scopes.selection(config))
+                    code = bot.run(args, sources=config['sources'], stop_requested=stop.is_set,
+                                   delivery=WebhookDelivery(config))
+                atomic_json(root / 'last-run.json', {'action': action, 'test_mode': test_mode, 'max_age_hours': max_age_hours, 'finished_at': utc(),
                                                      'exit_code': code, 'stopped': stop.is_set()})
                 log(f'{action} finished with exit code {code}.')
                 return code
@@ -177,10 +199,13 @@ def show_status(root):
     profile = config['profiles'].get(config['provider'], {})
     print('OSINT Digest server')
     print(f"Automatic checks: {'enabled' if config['enabled'] else 'paused'}")
-    print(f"Interval: {config['interval_minutes']} minutes | Test article limit: {config['max_posts']}")
-    print('Normal checks: all enabled sources, all unsent articles. Test mode is manual only.')
+    print(f"Interval: {config['interval_minutes']} minutes | Articles per source: {config['per_source_limit']}")
+    print('All enabled sources; newest eligible articles from the last 48 hours. Normal checks skip delivered articles; --test-mode allows manual resends.')
+    print('Article filters: ' + scopes.describe(scopes.selection(config)))
     print(f"Provider: {config['provider']} | Model: {profile.get('model') or '(none)'}")
-    print(f"Discord webhook: {'saved' if config['webhook'] else 'not configured'} | AI key: {'saved' if profile.get('api_key') else 'not configured'}")
+    print(f"Discord webhooks: {len(active_webhooks(config))} enabled / {len(config['webhooks'])} total | AI key: {'saved' if profile.get('api_key') else 'not configured'}")
+    for target in config['webhooks']:
+        print(f"  {'ON ' if target['enabled'] else 'OFF'} {target['name']}")
     print(f"Sources: {sum(s.get('enabled', True) for s in config['sources'])} enabled / {len(config['sources'])} total")
     print('Service: ' + ('running (heartbeat current)' if health(root) == 0 else 'stopped, unhealthy, or not started'))
     for name in ('runtime.json', 'last-run.json'):
@@ -204,18 +229,20 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--data-dir', type=Path, default=Path(os.getenv('OSINT_DATA_DIR', 'server-data')))
     commands = parser.add_subparsers(dest='command', required=True)
-    for action in ('serve', 'setup', 'settings', 'sources', 'models', 'status', 'health', 'backup', *ACTIONS):
+    for action in ('serve', 'setup', 'settings', 'sources', 'models', 'webhooks', 'scope', 'filters', 'status', 'health', 'backup', *ACTIONS):
         command = commands.add_parser(action)
         if action in ('batch', 'preview', 'new'):
             command.add_argument('--test-mode', action='store_true', help='Allow repeats in a limited manual test')
-            command.add_argument('--count', type=int, help='Test article limit, 1-20; requires --test-mode')
+            command.add_argument('--count', type=int, help='Articles per source for this test, 1-100; requires --test-mode')
         if action == 'test-ai':
             command.add_argument('--source', default='*', help='Optional publisher name')
+        if action in ('batch', 'preview', 'new', 'test-ai'):
+            command.add_argument('--test-days', type=int, help='Manual test lookback, 1-365 days (default 2); new requires --test-mode')
     args = parser.parse_args(argv)
     root = args.data_dir.resolve()
     if args.command == 'health':
         return health(root)
-    if args.command in ('setup', 'settings', 'sources', 'models') and not (sys.stdin.isatty() and sys.stdout.isatty()):
+    if args.command in ('setup', 'settings', 'sources', 'models', 'webhooks', 'scope', 'filters') and not (sys.stdin.isatty() and sys.stdout.isatty()):
         print('This command needs an interactive terminal. Use docker compose run --rm digest ' + args.command + ' (without -T).', file=sys.stderr)
         return 2
     if os.name != 'nt':
@@ -227,7 +254,7 @@ def main(argv=None):
         initialize(root)
         if args.command == 'serve':
             return serve(root, stop)
-        if args.command in ('setup', 'settings', 'sources', 'models'):
+        if args.command in ('setup', 'settings', 'sources', 'models', 'webhooks', 'scope', 'filters'):
             # Interactive commands retain normal Ctrl+C behavior at prompts.
             signal.signal(signal.SIGINT, signal.default_int_handler)
             from osint_digest.server.setup import administer
@@ -238,7 +265,7 @@ def main(argv=None):
             backup(root)
         else:
             return run_action(root, args.command, getattr(args, 'count', None), getattr(args, 'source', '*'), stop,
-                              test_mode=getattr(args, 'test_mode', False))
+                              test_mode=getattr(args, 'test_mode', False), test_days=getattr(args, 'test_days', None))
         return 0
     except BusyError as error:
         print(str(error), file=sys.stderr)

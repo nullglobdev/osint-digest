@@ -6,7 +6,9 @@ import warnings
 from osint_digest.core.collector import error_label
 from osint_digest.core.providers import PROVIDERS, KEY_ENV, list_models
 from osint_digest.core.sources import make_source
-from osint_digest.server.settings import (BusyError, SettingsError, load_config, save_config, require_ready)
+from osint_digest.core import scopes
+from osint_digest.server.settings import (BusyError, SettingsError, load_config, save_config, require_ready,
+                                         validate_webhooks)
 
 
 def prompt(title, default=''):
@@ -76,8 +78,44 @@ def choose_model(config):
     profile['model'] = prompt('Model ID', profile.get('model', '')).removeprefix('models/') if provider == 'gemini' else prompt('Model ID', profile.get('model', ''))
 
 
+def webhooks_menu(config):
+    targets = config['webhooks']
+    while True:
+        print('\nDiscord webhooks (every enabled destination receives the same articles):')
+        for index, target in enumerate(targets, 1):
+            print(f"{index}. {'ON ' if target['enabled'] else 'OFF'} {target['name']} | URL saved")
+        print('a Add | e Edit name/URL | t Enable/disable | r Remove | 0 Done')
+        action = prompt('Action', '0').lower()
+        try:
+            if action == '0':
+                return
+            if action == 'a':
+                target = {'name': prompt('Destination name (for example, Security team)'),
+                          'url': secret('Discord webhook URL'), 'enabled': True}
+                validate_webhooks([*targets, target])
+                targets.append(target)
+            elif action in ('e', 't', 'r'):
+                if not targets:
+                    print('Add a webhook first.')
+                    continue
+                index = number('Webhook number', 1, 1, len(targets)) - 1
+                target = targets[index]
+                if action == 't':
+                    target['enabled'] = not target['enabled']
+                elif action == 'e':
+                    edited = {**target, 'name': prompt('Destination name', target['name']),
+                              'url': secret('Discord webhook URL', target['url'])}
+                    validate_webhooks(targets[:index] + [edited] + targets[index + 1:])
+                    targets[index] = edited
+                elif yes('Remove this webhook? Its delivery history will be retained.'):
+                    targets.pop(index)
+            else:
+                print('Choose one of the displayed actions.')
+        except SettingsError as error:
+            print(str(error))
+
+
 def connection(config):
-    config['webhook'] = secret('Discord webhook URL', config['webhook'])
     choices = list(PROVIDERS.items())
     print('\nSummary providers:')
     for index, (title, _) in enumerate(choices, 1):
@@ -100,10 +138,34 @@ def connection(config):
 
 
 def schedule(config):
-    config['max_posts'] = number('Article limit for manual tests only', config['max_posts'], 1, 20)
+    config['per_source_limit'] = number('Articles per source per check', config['per_source_limit'], 1, 100)
     config['interval_minutes'] = number('Check every (minutes)', config['interval_minutes'], 15, 360)
-    print('Automatic checks read every enabled source and send all unsent articles and due retries, including on the first run.')
+    print('Every enabled source is checked. Only articles published in the last 48 hours qualify, newest first. Previously delivered articles are skipped. The per-source limit includes retries.')
     config['enabled'] = yes('Enable automatic checks?', config['enabled'])
+
+
+def scope_menu(config):
+    keys = list(scopes.LABELS)
+    while True:
+        selected = scopes.selection(config)
+        print('\nArticle filters: all selected scopes must match before AI analysis. All means no restriction.')
+        for index, key in enumerate(keys, 1):
+            print(f'{index}. {scopes.LABELS[key]}: {scopes.CHOICES[key][selected[key]]}')
+        print('8 Reset all filters | 0 Done')
+        action = number('Change scope', 0, 0, 8)
+        if action == 0:
+            return
+        if action == 8:
+            config.update(scopes.DEFAULTS)
+            continue
+        key = keys[action - 1]
+        choices = list(scopes.CHOICES[key])
+        for index, value in enumerate(choices):
+            print(f'{index}. {scopes.CHOICES[key][value]}')
+        option = number(scopes.LABELS[key], choices.index(selected[key]), 0, len(choices) - 1)
+        config[key] = choices[option]
+        print('Keywords: ' + scopes.keywords(key, config[key]))
+        print('OR means alternatives; + requires both concepts in the article. Only matching articles count toward the per-source limit.')
 
 
 def sources_menu(config):
@@ -149,12 +211,15 @@ def edit(root, section):
     config = deepcopy(config)
     if section == 'setup':
         print('\nOSINT Digest server setup\nCredentials are hidden while typing and saved in a private file in the data volume.')
+        webhooks_menu(config)
         connection(config)
         schedule(config)
+        scope_menu(config)
         if yes('Review or add publisher sources now?'):
             sources_menu(config)
     else:
-        {'connection': connection, 'schedule': schedule, 'sources': sources_menu, 'models': choose_model}[section](config)
+        {'connection': connection, 'schedule': schedule, 'sources': sources_menu,
+         'models': choose_model, 'webhooks': webhooks_menu, 'scope': scope_menu, 'filters': scope_menu}[section](config)
     if config['enabled']:
         require_ready(config)
     save_config(root, config, revision)
@@ -167,28 +232,30 @@ def administer(root, command):
         return
     from osint_digest.server.app import run_action, show_status, backup
     while True:
-        print('\nOSINT Digest settings\n1 Connection and AI\n2 Schedule and test article limit\n3 Sources\n4 Models\n5 Show status\n6 Check feeds\n7 Test AI (local preview)\n8 Preview all unsent articles\n9 Test mode (limited articles; repeats allowed)\n10 Check all sources and send unsent articles\n11 Check Discord connection (no message)\n12 Back up settings and history\n0 Exit')
+        print('\nOSINT Digest settings\n1 AI connection\n2 Schedule and articles per source\n3 Sources\n4 Models\n5 Show status\n6 Check feeds\n7 Test AI (local preview)\n8 Preview eligible unsent articles\n9 Test mode (limited articles; repeats allowed)\n10 Check all sources and send eligible unsent articles\n11 Check all enabled Discord connections (no message)\n12 Back up settings and history\n13 Webhooks\n14 Article filters\n0 Exit')
         choice = prompt('Choice', '0')
         try:
             if choice == '0':
                 return
-            if choice in ('1', '2', '3', '4'):
-                edit(root, {'1': 'connection', '2': 'schedule', '3': 'sources', '4': 'models'}[choice])
+            if choice in ('1', '2', '3', '4', '13', '14'):
+                edit(root, {'1': 'connection', '2': 'schedule', '3': 'sources', '4': 'models', '13': 'webhooks', '14': 'scope'}[choice])
             elif choice == '5':
                 show_status(root)
             elif choice == '12':
                 backup(root)
             elif choice == '9':
-                print('Test mode applies to this task only. Automatic checks always send unsent articles.')
+                print('Test mode applies to this task only. Choose a timeframe up to 365 days; articles must still be available in publisher feeds. Automatic checks keep the 48-hour window and skip delivered articles.')
                 config, _ = load_config(root)
-                count = number('Test article limit', config['max_posts'], 1, 20)
-                task = prompt('1 Preview locally | 2 Send to Discord | 0 Cancel', '1')
+                count = number('Articles per source for this test', config['per_source_limit'], 1, 100)
+                days = number('Test article timeframe (days)', 2, 1, 365)
+                task = prompt('1 Preview locally | 2 Send to all enabled webhooks | 0 Cancel', '1')
                 if task in ('1', '2'):
-                    code = run_action(root, 'preview' if task == '1' else 'new', count=count, test_mode=True)
+                    code = run_action(root, 'preview' if task == '1' else 'new', count=count, test_mode=True, test_days=days)
                     print(f'Test finished (exit code {code}).')
             elif choice in ('6', '7', '8', '10', '11'):
                 action = {'6': 'check-feeds', '7': 'test-ai', '8': 'preview', '10': 'new', '11': 'test-discord'}[choice]
-                code = run_action(root, action)
+                options = {'test_days': number('Test article timeframe (days)', 2, 1, 365)} if action in ('test-ai', 'preview') else {}
+                code = run_action(root, action, **options)
                 print(f'Command finished (exit code {code}).')
             else:
                 print('Choose one of the displayed numbers.')

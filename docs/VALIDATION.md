@@ -2,6 +2,70 @@
 
 Earlier validation dates and release-specific results are retained below.
 
+
+## Desktop 1.8.0 and server 1.6.0: independent article scopes
+
+- Windows suite: 176 tests collected, 175 passed, one POSIX-only permissions test skipped. All 119 core/server tests passed in a network-disabled Linux container, including the extracted server bundle. Container acceptance checks passed.
+- Seven independent selectors default to All: Sector, Threat actor, Social engineering, Access & exploitation, Malware & impact, Other styles, and Education combinations. Tests cover every supplied alias, whole-word boundaries, context qualifiers, AND across scopes, OR within options, and education concept co-occurrence in either order.
+- Shared collector tests verify filtering of full article text before AI and reporting, per-source limits counting only matches, selection changes reconsidering excluded articles, preserved normal deduplication, Dev previews/AI tests, local Results, and two-webhook delivery from one analysis. Old cached reports cannot bypass new filters; their existing analysis is reused after full-body validation. Missing metadata falls back safely in the reader.
+- Desktop tests cover migration from sector-only profiles, saving all selectors without saving unfinished credentials, worker flags for every action, filtering Results and Previews, reset without deleting reports, accessible names, Ctrl+7/Tab/arrow navigation, and focus scrolling after form rows wrap at 200% text. Reviewed dark/light Filters layouts and the compact Dashboard.
+- Server settings migrate in memory to schema 5, preserving the existing sector and defaulting new scopes to All. Interactive menus expose every option and a reset action. Saved filter combinations apply to all normal/test tasks and enabled webhooks; CLI tests validate independent flags and reject unknown options.
+- Builds contain only allowlisted application files. The 21 recorded private configuration/history/preview files remain unchanged, and repository files passed a credential scan. No live AI requests or Discord messages were made. These are keyword relevance filters, not confirmed actor attribution or semantic scoring.
+
+## Desktop 1.7.0 and server 1.5.0: adjustable test timeframe
+
+Validated on October 10, 2026:
+
+- Windows suite: 157 tests collected, 156 passed, one POSIX-only permissions test skipped. All 104 core/server tests passed in a network-disabled Linux container.
+- Built Windows 1.7.0 installer/portable packages and the server 1.5.0 source bundle. The packaged Windows executable passed native startup, encryption, tray, accessibility, and test-timeframe checks from a fresh profile outside the repository. The extracted server bundle passed all 104 tests and built its Docker image. Container acceptance checks passed. All 21 tracked private configuration/history/preview files remain unchanged, and the repository passed a credential scan.
+- Dev tools provide a persistent 1-365 day test timeframe, defaulting to two days when upgrading an older profile. It applies to previews, AI tests, and explicit manual test collection. Normal collection and automatic checks retain the 48-hour window. Hidden Dev actions remain blocked in the worker.
+- Tests verify older articles can be selected within the configured timeframe, unknown/future/out-of-window dates remain excluded, previews leave delivery history unchanged, explicit tests can repeat articles, normal checks return to 48 hours, and age is rechecked after AI and before each webhook. Server commands and interactive menus pass a per-invocation timeframe without changing the schedule.
+- The new control has an accessible label, keyboard input, range validation, and immediate persistence without saving unfinished credentials. Dashboard text reflects the active manual test window. Reviewed Dev preferences in dark/light themes and at 200% text in a small window.
+- Validation uses offline publisher, AI, and Discord fixtures; no live messages or AI requests were needed. Expanding the window filters entries still present in current publisher feeds and does not implement historical archive crawling.
+
+## Desktop 1.6.0 and server 1.4.0: sector scopes and working article links
+
+Validated on October 10, 2026:
+
+- Windows suite: 148 tests collected, 147 passed, one POSIX-only permissions test skipped. All 97 core/server tests passed in a network-disabled Linux container. Container acceptance checks also passed.
+- Built the Windows 1.6.0 executable, installer, and portable ZIP. The executable passed native packaged startup from outside the repository with a fresh profile: GUI/resources, DPAPI, tray, accessible scope and article-limit controls, 25 scope choices, the 48-hour window, and no credentials. The extracted server 1.4.0 bundle passed all 97 included tests with networking disabled and built its own Docker image successfully.
+- The full supplied catalog is covered: 16 sectors, seven education groups, combined Education mode, and None. Tests verify broad education keyword matches, whole-word boundaries, common plurals, explicit parenthetical qualifiers, full-body matching before AI, unmatched articles not consuming limits, scope changes, no-filter defaults, normal deduplication, and Dev/test date and limit enforcement.
+- Scope applies to collection, previews, AI tests, local Results, and all server webhooks. Cached reports cannot bypass a changed scope, and existing AI summaries are reused after validation. Previously excluded articles are reconsidered under a different scope or None. Previews leave delivery history unchanged.
+- Mouse tests activate original-article, CVE, technique, and sub-technique links through the Qt default-browser opener. Keyboard tests traverse every link with Tab and activate it with Enter. Invalid targets are ignored, browser failures display feedback, and links retain the correct contrast when switching themes.
+- Rendered dark/light Results and the Dashboard were reviewed, including the sector selector at 200% text in a small window. Tests verify accessible scope labeling, immediate preference persistence without saving unfinished credentials, and filtering of both Results and Previews without deleting files. Full screen-reader/conformance testing remains a separate manual check.
+- Validation uses mock publisher, AI, and Discord transports. No live AI requests or Discord messages were made. All 21 previously recorded private configuration, history, and preview files remain unchanged; repository files passed a credential scan.
+
+## Desktop 1.5.0 and server 1.3.0: per-source limits and recent articles
+
+Validated on October 10, 2026:
+
+- Windows suite: 125 tests collected, 124 passed, one POSIX-only permissions test skipped. All 81 core/server tests passed in the Linux image with networking disabled.
+- New regression coverage includes independent limits per source, newest-first selection, normal deduplication across restarts, local Results, Dev/test resends, preview isolation, expired retries, timezone offsets, the exact 48-hour boundary, unknown/future dates, RSS/Atom publication formats, and articles that age out during AI generation. Atom updated timestamps do not override publication age.
+- Both editions enforce the same policy. Windows worker tests verify the required limit/window flags and reject resend actions outside Dev mode. Server integration tests cover the per-source limit across multiple webhooks. Older saved article counts migrate to per-source settings without rewriting secrets during loading.
+- The Dashboard limit is visible without Dev mode, has an accessible name, saves immediately, and fits the compact layout. Reviewed the rendered 1040×740 Dashboard. Existing theme, keyboard, large-text, and accessibility regression tests passed.
+- Built the Windows 1.5.0 executable, installer, and portable ZIP. The packaged executable passed native startup checks from outside the repository with a fresh profile and no Python environment: GUI/resources, encryption, tray, accessible article limit, and empty credentials.
+- Rebuilt the Linux image; offline container acceptance passed, including independent webhook receipts, cached-report recovery, persistent settings/history, private files, process locks, backups, and graceful restart. No live Discord messages or AI calls were made. Existing user configuration, history, previews, and the running 1.4.0 app were preserved.
+
+## Server 1.2.0: multiple Discord webhooks
+
+Validated on October 10, 2026:
+
+- Windows suite: 110 tests collected, 109 passed, one POSIX-only permissions test skipped. The 68 core/server tests also passed inside the Linux image with networking disabled.
+- Added regression checks for fan-out of a single report, per-webhook receipts and backoff, partial failures, cached reports on retry, adding/pausing/removing/re-adding destinations, token rotation and renaming, legacy history migration before a settings edit, test-mode repeats, preview isolation, connection checks, and credential-safe menus/logging.
+- Rebuilt the Docker image and passed offline container acceptance: non-root/read-only operation, private configuration, no bundled GUI or secrets, locking, backups, restart persistence, and stopping between webhooks. On resume, the already acknowledged webhook was skipped and the saved report was reused.
+- Completed the real interactive container setup using two fake webhook URLs with network access disabled. Both destinations appeared by name, their URLs stayed hidden, and a paused 360-minute schedule saved successfully. No live Discord messages or AI requests were made.
+- Existing local credentials, desktop profile, and delivery/preview files were preserved. Multiple-webhook configuration applies to the server; the desktop and standalone CLI retain their single-webhook settings.
+
+## Desktop 1.4: compact layout and in-app publishing
+
+Checked October 10, 2026 (America/New_York).
+
+- The desktop defaults to a 1040×740 window with compact controls, a small header, and reduced spacing. Results provides search, a split article reader, formatted publication times, references, and defanged IOC values. Preferences contains appearance/accessibility controls, background behavior, and Dev mode. Preview tools and their worker actions are gated by Dev mode.
+- Windows suite: 95 tests collected, 94 passed, one POSIX-only permissions test skipped. New coverage includes durable local publishing without a webhook, deduplication after reloading history, separation from Discord delivery history, recovery from local write failures, preview isolation, worker routing and Dev mode enforcement, Results search/selection, escaped article markup, and compact Dashboard layout.
+- Visual checks cover the compact Dashboard, Results reader, and Preferences in dark/light themes, plus 200% text in a smaller window. Existing accessibility tests cover keyboard navigation, focus scrolling, text enlargement, contrast overrides, and accessible control metadata. Full assistive-technology certification remains outside this validation.
+- The Windows 1.4 executable passed native packaged startup checks for GUI/resources, DPAPI, tray, and accessibility metadata. Its worker refused a preview with Dev mode disabled. Packaged collector, UI, worker, settings, reader, and theme code were compared with the final source. Installer and portable ZIP builds succeeded.
+- The shared collector passed all 53 core/server tests in a network-disabled Linux container, and the updated Docker image passed container acceptance checks. No real Discord posts or AI calls were used. Existing local credentials, delivery history, and previews were verified unchanged.
+
 ## Delivery behavior update: desktop 1.3 and server 1.1
 
 Checked October 10, 2026 (America/New_York).

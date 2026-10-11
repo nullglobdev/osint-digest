@@ -4,27 +4,30 @@ For continuous operation on a server without a GUI, use the separate [container 
 
 ## Install and connect
 
-1. Download the Windows installer from [GitHub Releases](https://github.com/nullglobdev/osint-digest/releases/latest) and run it. The build instructions below produce `OSINTDigest-Setup-1.3.0-x64.exe` for this source version. It installs for your Windows user, without requiring administrator rights. Windows 10/11 x64 is the target platform; Python is bundled.
+1. Download the Windows installer from [GitHub Releases](https://github.com/nullglobdev/osint-digest/releases/latest) and run it. The build instructions below produce `OSINTDigest-Setup-1.8.0-x64.exe` for this source version. It installs for your Windows user, without requiring administrator rights. Windows 10/11 x64 is the target platform; Python is bundled.
 2. Open **OSINT Digest** from the Start menu.
-3. In **Connection**, paste your Discord channel webhook. Choose a summary provider, enter its **AI API key**, click **Refresh models**, and select a model. Click **Save connection**. Existing CLI users can select **Import connection from .env** to fill these fields from their own local file.
-4. Click **Test Discord connection** to verify access without sending a message.
-5. In **Sources**, enable the publishers you want or use **Add source** to add your own RSS/Atom feed, then **Save sources**. Every enabled source is checked. In **Dashboard**, use **Preview unsent articles** and open **Previews** to read the summaries. For a small sample, enable **Test mode**, choose a **Test article limit**, then **Preview test articles**.
-6. Click **Check all and send new** when ready. It sends a separate Discord message for every eligible unsent article, without CSV or JSON attachments. Test mode changes this button to **Send test articles**, which allows repeats up to the test limit.
+3. In **Connection**, choose a summary provider and configure its **AI API key** and model, or select **Publisher excerpts** to collect without AI. Leave **Discord webhook URL** blank to publish in the app's **Results** tab. Add a webhook if you want Discord delivery. Click **Save connection**. Existing CLI users can select **Import from .env** to fill these fields from their own local file.
+4. If using Discord, **Test Discord connection** verifies access without sending a message.
+5. In **Sources**, enable the publishers you want or use **Add source** to add your own RSS/Atom feed, then **Save sources**. Every enabled source is checked.
+6. Set **Articles per source** on the Dashboard (1–100, default 5), then click **Collect new**. The header shows the destination: **Publish in Results** or **Publish to Discord**. Discord receives a separate message per article, without CSV or JSON attachments. Local publishing saves the article in Results for reading now or after restarting the app.
 
-The portable alternative is `OSINTDigest-Portable-1.3.0-x64.zip`: extract the entire ZIP and run `OSINTDigest.exe` inside its folder. Keep the `_internal` folder beside the executable. No separate Python installation is needed.
+The portable alternative is `OSINTDigest-Portable-1.8.0-x64.zip`: extract the entire ZIP and run `OSINTDigest.exe` inside its folder. Keep the `_internal` folder beside the executable. No separate Python installation is needed.
 
 ## Everyday use
 
-- **Test AI** summarizes one real article even when nothing is queued, saving a local preview.
-- **Preview unsent articles** checks every enabled feed and analyzes eligible unsent articles without sending messages or changing history. AI quota is still used.
-- **Check all and send new** checks every enabled feed and sends all unsent articles and due retries. Successful deliveries are remembered across restarts; there is no article-count cap.
-- **Test mode** allows repeats and limits manual Send/Preview to 1–20 articles. It checks all feeds, sampling first entries across publishers before taking second entries. Source order determines sample priority. Successful test posts are recorded; test failures do not alter normal retries. Test mode starts off whenever the app opens and never changes automatic checks.
+- **Articles per source** is always visible on the Dashboard and saves immediately. It caps eligible article attempts from each source during every manual or automatic check, including retries, previews, and Dev mode resends. For example, 5 with 10 enabled sources can publish up to 50 articles per check.
+- **Filters** provides independent Sector, Threat actor, Social engineering, Access & exploitation, Malware & impact, Other styles, and Education combinations dropdowns. Each defaults to **All**. Every selected scope must match; aliases within an option are alternatives. Filtering happens before AI analysis, and only matches consume article limits. Choices save immediately. Use **View selected keywords** or **Reset all filters**. The Dashboard shows the number of active scopes and an **Article filters** shortcut. See [SCOPES.md](SCOPES.md).
+- **Collect new** checks every enabled feed and selects the newest unsent articles published within the last **48 hours**, up to the per-source limit. Successful deliveries are remembered across restarts. Remaining eligible articles wait for later checks; expired retries are removed from the queue.
+- **Results** contains articles published locally when the webhook is blank. Search by title or publisher, select an article to read its summary, references and IOC candidates, and click the article, CVE, or ATT&CK links to open them in your default browser. **Open source article** opens the publisher's page too. Tab through the reader's links and press Enter for keyboard access. The reader refreshes as articles arrive and preserves your selected article. Existing results remain available when you add a webhook. The Filters tab also controls this view; reset all filters to show all saved articles again.
+- Local publication and Discord delivery have separate histories. Saving an article locally does not mark it sent to Discord. Adding a webhook later can send articles previously published only in the app. Clearing a webhook uses the existing local history again.
+- **Preferences → Enable Dev mode** reveals the **Previews** tab and Dashboard **Preview** and **Test AI** actions. Previews use configured AI quota but never publish results or change delivery history. These tools are hidden and cannot run through the desktop worker while Dev mode is off.
+- In **Preferences > Developer tools**, enable Dev mode and set **Test article timeframe** to 1-365 days (default 2). This lookback applies to **Preview**, **Test AI**, and **Collect test articles**. Enable **Allow resends for manual tests**, then choose **Collect test articles** on the Dashboard to publish within that timeframe. Normal **Collect new** and automatic checks always use 48 hours. The timeframe saves immediately; Allow resends starts off each time the app opens. All selected scopes and the per-source article limit still apply. Successful tests update delivery history; failed tests do not change normal retries.
 - **Start automatic checks** repeats the new-article check every 15 to 360 minutes. Select a preset or type a whole number. Keep the PC awake and online. Automatic checks are off each time you start the app.
 - **Check feeds** tests publisher feed access without using AI or sending Discord messages.
 
 **Run in background** hides the window in the Windows system tray near the clock; existing automatic checks continue. It does not start automatic checks by itself. The **Keep running in the tray when I close the window** option makes the X button do the same and saves immediately. The normal minimize button keeps the app in the taskbar. Click the tray icon to reopen the window, or right-click it to stop checks or exit. Opening the app again also restores its existing window. **Exit** stops future checks and waits for any current task to finish. This is not a Windows service: checks stop after Exit, sign-out, or shutdown and do not run during sleep.
 
-The first normal check sends all available feed articles without a successful delivery record. Older quiet-baseline articles are also eligible after an upgrade if still in a feed. Existing delivered-article history remains intact; the saved article count becomes the manual test limit only.
+Normal collection on the first run and upgrades follows the same limit and 48-hour window. Dev previews and tests use the selected test timeframe. Increasing it only includes older articles still listed in publisher feeds; it does not retrieve a publisher archive. Selection remains newest first, so increase the per-source limit or narrow the source/sector selection if newer articles fill the test limit. Publication dates must include a timezone; missing, invalid, future, and older dates are skipped with a note in Activity. Atom updated dates do not make older articles eligible again. The age is rechecked before publishing, including after AI generation. Existing Results and successful delivery history remain intact. An older saved test article count becomes the new per-source limit on upgrade.
 
 Work runs in a separate hidden process, so the window remains responsive. Progress and errors appear in Activity. If a provider is unavailable, a run can send publisher excerpts; Activity reports how many summaries versus excerpts were produced. AI Test reports a failure when it cannot generate an evidence-checked summary.
 
@@ -36,9 +39,9 @@ For custom sources, enter a name and public HTTPS RSS/Atom URL. The feed hostnam
 
 ## Appearance and accessibility
 
-The workspace uses rounded navy panels, cyan accents, and a static radar illustration. At the top of the window, select **Dark**, **Light**, or **Windows** under Theme. Choose **Text size** from 100% to 200%; preferences save immediately. Windows contrast themes take priority over custom colors.
+The compact desktop workspace uses rounded navy panels, cyan accents, a small header, and tighter controls and spacing. Open **Preferences** to select **Dark**, **Light**, or **Windows** under Theme and choose **Text size** from 100% to 200%. Preferences save immediately. Windows contrast themes take priority over custom colors.
 
-Use Tab/Shift+Tab to move between controls, Ctrl+1 through Ctrl+4 to switch sections, Ctrl+S to save, and F1 for **Keyboard help**. Focus has a visible outline and scrolls into view. Controls wrap at smaller widths and larger text sizes. The Activity panel has **Pause live activity updates** for reading without new log output appearing; collection continues.
+Use Tab/Shift+Tab to move between controls, Ctrl+1 through Ctrl+5 for Dashboard, Connection, Sources, Results, and Preferences; Ctrl+6 opens Previews in Dev mode; Ctrl+7 opens Filters. Ctrl+S saves connection/source settings; F1 opens **Keyboard help**. Focus has a visible outline and scrolls into view. Controls wrap at smaller widths and larger text sizes. **Preferences → Pause live activity updates** pauses the Activity log display while collection continues. Background behavior and Dev mode are also in Preferences.
 
 The interface uses Qt controls with accessible names, roles, and states for Windows assistive technology. See [ACCESSIBILITY.md](ACCESSIBILITY.md) for tested features, keyboard instructions, and manual checks still required before claiming full Section 508 conformance.
 
@@ -49,7 +52,9 @@ Desktop data lives in `%LOCALAPPDATA%\OSINTDigest`, separate from the CLI projec
 - `settings.json`: connection settings; the webhook and each provider's API key are encrypted with Windows user-scoped DPAPI. Version 1.0 Gemini settings migrate automatically.
 - `sources.json`: your selected and custom sources, allowed hosts, and source order.
 - `state/state.json`: delivery history and queued retries.
-- `preview/`: local reports.
+- `results/`: durably published local articles shown in Results.
+- `state/local-state.json`: local publishing history and retries, separate from Discord's `state/state.json`.
+- `preview/`: developer previews; separate from published Results.
 - `activity.log`: the most recent operation, with saved credential values redacted.
 
 No developer credentials, article previews, or delivery state are included in the installer. Each user supplies their own credentials. Local CLI history is not imported automatically. Uninstall removes the application and shortcuts but preserves your settings/history. If you want to remove those too, close the app and delete the app-data folder yourself. Moving encrypted settings to another account or computer may require entering credentials again.
@@ -66,12 +71,12 @@ Build on Windows x64 with Python 3.12 and [Inno Setup 6](https://jrsoftware.org/
 
 The script creates `.build-venv`, installs the pinned build dependencies, runs the offline tests, generates the app icon, builds the PyInstaller app, compiles the installer, creates a portable ZIP, and writes `dist/SHA256SUMS.txt`.
 
-The unpacked app is `dist/1.3.0/OSINTDigest/OSINTDigest.exe`. Versioned build folders allow an older copy to stay open during a build. Close the older app before reviewing the new version with the same profile. To run from source, install `requirements/desktop.txt` and run `py -3 desktop.py`.
+The unpacked app is `dist/1.8.0/OSINTDigest/OSINTDigest.exe`. Versioned build folders allow an older copy to stay open during a build. Close the older app before reviewing the new version with the same profile. To run from source, install `requirements/desktop.txt` and run `py -3 desktop.py`.
 
 Distribution files:
 
-- `dist/installer/OSINTDigest-Setup-1.3.0-x64.exe`
-- `dist/OSINTDigest-Portable-1.3.0-x64.zip`
+- `dist/installer/OSINTDigest-Setup-1.8.0-x64.exe`
+- `dist/OSINTDigest-Portable-1.8.0-x64.zip`
 - `dist/SHA256SUMS.txt`
 
 `packaging/windows/OSINTDigest.spec` uses an explicit resource allowlist. Do not add `.env`, app-data folders, `state`, `preview`, or credentials to it. For packaging validation, `OSINTDigest.exe --smoke-test --data-dir <temporary-folder>` initializes the GUI without showing its window, checks packaged resources, Windows encryption, the tray, and accessible field metadata, and writes `smoke-test.json`. It performs no network requests and sends no messages.

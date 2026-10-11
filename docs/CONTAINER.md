@@ -4,7 +4,7 @@ The container edition runs the same collector as the Windows desktop app, with t
 
 ## First-time setup
 
-Clone this repository for the current source, or download a published server bundle from [GitHub Releases](https://github.com/nullglobdev/osint-digest/releases). The bundle builder produces `OSINTDigest-Server-1.1.0.tar.gz` for this source version.
+Clone this repository for the current source, or download a published server bundle from [GitHub Releases](https://github.com/nullglobdev/osint-digest/releases). The bundle builder produces `OSINTDigest-Server-1.6.0.tar.gz` for this source version.
 
 ```sh
 git clone https://github.com/nullglobdev/osint-digest.git
@@ -12,15 +12,16 @@ cd osint-digest
 sh scripts/server.sh setup
 ```
 
-For the downloaded bundle, extract it with `tar -xzf OSINTDigest-Server-1.1.0.tar.gz`, enter `OSINTDigest-Server-1.1.0`, and run the same setup command.
+For the downloaded bundle, extract it with `tar -xzf OSINTDigest-Server-1.6.0.tar.gz`, enter `OSINTDigest-Server-1.6.0`, and run the same setup command.
 
 The script builds the image and opens the setup wizard. No Python installation is needed on the server. The wizard walks through:
 
-1. Discord webhook, entered with hidden terminal input.
+1. One or more named Discord webhooks. Choose **a Add** for each destination, enter its URL with hidden terminal input, then **0 Done**.
 2. Google Gemini, OpenAI, Anthropic Claude, Ollama, or publisher excerpts without AI.
 3. The selected provider's API key and model. You can load models from the provider, page through the choices, or enter a model ID. Keys and models are retained separately for each provider. OpenAI/Claude require an explicit usage-billing opt-in.
-4. Manual test article limit (1–20) and normal check interval (15–360 minutes).
-5. Whether automatic checks should be enabled, and optional source changes.
+4. Articles per source per check (1–100, default 5) and normal check interval (15–360 minutes).
+5. Whether automatic checks should be enabled.
+6. Optional article filters, then optional source changes. Every scope starts at All, which adds no restriction.
 
 Start the background service after saving:
 
@@ -30,9 +31,9 @@ sh scripts/server.sh status
 sh scripts/server.sh logs
 ```
 
-Automatic checks start only if you enabled them in setup. A fresh profile starts paused. Every cycle checks all enabled sources and processes all unsent articles and due retries, without an article-count cap. Successfully delivered URLs are skipped across restarts. Closing your SSH session does not stop the container. Docker must be running and the server must stay awake and online.
+Automatic checks start only if you enabled them in setup. A fresh profile starts paused. Every cycle checks all enabled sources and selects the newest eligible unsent articles and due retries from the last **48 hours**, up to the saved **Articles per source** limit for each source. Successfully delivered URLs are skipped per webhook across restarts. Closing your SSH session does not stop the container. Docker must be running and the server must stay awake and online.
 
-The first normal run sends all available unsent feed articles. After an upgrade, older quiet-baseline articles also become eligible if still in a feed, because they were never delivered. Existing successful delivery history is preserved. Use a preview or limited test to review the output first.
+The first run and upgrades follow the same per-source cap and 48-hour publication window. Publication dates must include a timezone; missing, invalid, future, and older dates are skipped. An Atom updated timestamp does not make an old article eligible again. Queued retries expire when articles leave the window. Existing successful delivery history is preserved. Use a preview or manual test to review the output first.
 
 You can use the Compose commands directly, including from PowerShell with Docker Desktop in Linux-container mode:
 
@@ -44,37 +45,58 @@ docker compose up -d
 
 Setup and settings need an interactive terminal; do not add `-T` or pipe secrets into them. Ctrl+C cancels an unfinished edit without saving it. Credentials are not accepted as command-line arguments.
 
-## Change settings or sources
+## Change settings, webhooks, or sources
 
 ```sh
 sh scripts/server.sh settings
+sh scripts/server.sh webhooks
 sh scripts/server.sh sources
+sh scripts/server.sh filters
 sh scripts/server.sh models
 ```
 
-The settings menu includes connection/provider configuration, scheduling, source management, model discovery, status, preview/testing, delivery actions, and backup. The Sources menu can add/edit HTTPS RSS/Atom feeds, enable or disable publishers, remove them, and reorder test sampling priority. Include exact allowed hostnames for article links and redirects; the feed hostname is included automatically. Existing publisher names stay fixed so their delivery history remains associated correctly.
+Choose **2 Schedule and articles per source** in Settings to change the cap. It applies to normal checks, retries, previews, and Dev/test resends. For example, 5 per source with 10 sources can select up to 50 articles in a run; each selected article can produce a message at every enabled webhook.
+
+Use **14 Article filters** or `sh scripts/server.sh filters` to select an option independently for Sector, Threat actor, Social engineering, Access & exploitation, Malware & impact, Other styles, and Education combinations. Every selected scope must match; aliases within an option are alternatives. All adds no restriction, and the menu can reset every scope to All. Filtering happens before AI analysis and delivery, and only matching articles consume the per-source limit. Every enabled webhook shares the combination. Normal checks, previews, AI tests, and manual resend tests all apply it. See [SCOPES.md](SCOPES.md) for the full catalog and matching rules. Existing sector-only settings migrate with all six new scopes set to All; the `scope` command remains an alias.
+
+The settings menu includes webhook management (option 13), AI provider configuration, scheduling, source management, model discovery, status, preview/testing, delivery actions, and backup. The Sources menu can add/edit HTTPS RSS/Atom feeds, enable or disable publishers, remove them, and reorder test sampling priority. Include exact allowed hostnames for article links and redirects; the feed hostname is included automatically. Existing publisher names stay fixed so their delivery history remains associated correctly.
 
 Changes save to the data volume and are noticed by the service within a few seconds while idle. An active task keeps its original configuration until it finishes. Pausing automatic checks prevents subsequent runs. Concurrent editing sessions cannot silently overwrite one another. Changes do not require an image rebuild or container restart.
 
 Windows settings use Windows account encryption and are not directly portable to Linux. Configure server credentials using this wizard. The server does not import the repository's `.env` or your desktop profile.
+
+## Multiple Discord destinations
+
+Use `sh scripts/server.sh webhooks` (or `docker compose run --rm digest webhooks`) to add, rename, replace, enable/disable, or remove destinations. URLs are hidden while entered and are not shown in lists or status. Every enabled webhook receives the same articles from every enabled source; this version does not assign different sources to individual channels. At least one webhook must be enabled for sending or automatic checks. Pause the schedule first if you want to disable all destinations.
+
+The server retrieves and summarizes an article once for the active destinations, then sends the resulting report to each webhook. Each acknowledged post is saved immediately. A failure at one webhook does not prevent delivery to others. Only failed destinations are retried, with individual backoff; a saved report is reused until its pending deliveries finish or the article ages out of the 48-hour window, avoiding another AI call. The backoff starts at one hour and rises to a maximum of one day; retries are attempted during scheduled or manual normal checks after that time. Renaming, token rotation for the same webhook ID, disabling, and removing/re-adding the same webhook preserve its history. If you change the AI model while a report is awaiting delivery, that retry still uses its original report.
+
+A newly added webhook receives eligible feed and queued articles within the last 48 hours, subject to the per-source cap. Existing destinations skip articles they already received. Re-enabling a webhook also checks the current feeds; articles that disappeared from the feeds while it was disabled are not guaranteed to be recovered. History follows Discord webhook IDs, so two different webhooks pointing at the same channel will each post there.
+
+Existing single-webhook `server.json` files are read automatically and shown as **Primary**. Saving settings upgrades the configuration to version 5; the original webhook's successful delivery history is retained and is not incorrectly applied to new destinations. Back up before upgrading; the version 5 configuration requires this server version or newer. Older `max_posts` settings migrate to the per-source limit; existing `per_source_limit` settings take priority. Desktop and standalone CLI settings continue to use their existing single-webhook option.
 
 ## Run an individual task
 
 | Command | Behavior |
 |---|---|
 | `sh scripts/server.sh check-feeds` | Check enabled RSS/Atom feeds; no AI or Discord calls |
-| `sh scripts/server.sh test-discord` | Verify the webhook using a read-only request; no message |
+| `sh scripts/server.sh test-discord` | Verify every enabled webhook using read-only requests; no messages |
 | `sh scripts/server.sh test-ai` | Summarize one article and save a local preview; no Discord message |
 | `sh scripts/server.sh test-ai --source Huntress` | Test AI using a particular configured source |
-| `sh scripts/server.sh new` | Check all enabled sources and send all unsent articles and due retries |
-| `sh scripts/server.sh preview` | Preview all eligible unsent articles without posting or changing history |
-| `sh scripts/server.sh preview --test-mode --count 5` | Check all feeds and preview up to five articles, including repeats |
-| `sh scripts/server.sh new --test-mode --count 5` | Check all feeds and send up to five articles, including repeats |
-| `sh scripts/server.sh new --test-mode --count 10` | Run a manual test with up to ten articles, including repeats |
+| `sh scripts/server.sh new` | Check all enabled sources; send recent unsent articles and due retries within the per-source limit to every enabled webhook |
+| `sh scripts/server.sh preview` | Preview recent unsent articles within the per-source limit; no posting or history changes |
+| `sh scripts/server.sh preview --test-mode --count 5` | Check all feeds and preview up to five articles per source, including recent repeats |
+| `sh scripts/server.sh new --test-mode --count 5` | Check all feeds and send up to five articles per source, including recent repeats |
+| `sh scripts/server.sh preview --test-mode --count 5 --test-days 30` | Preview up to five matching articles per source from the last 30 days, including repeats |
+| `sh scripts/server.sh new --test-mode --count 5 --test-days 30` | Send the same 30-day manual test to enabled webhooks |
+| `sh scripts/server.sh test-ai --test-days 30` | Test AI using an eligible article from the last 30 days; no posting |
+| `sh scripts/server.sh new --test-mode --count 10` | Run a manual test with up to ten articles per source, including recent repeats |
 
-AI tests and previews use the configured provider's quota. **Test mode is manual only:** it checks all feeds, samples first entries across publishers before taking second entries, and permits repeats up to the limit. Successful test deliveries update history; failed tests leave normal retries unchanged. Automatic checks always use normal deduplication with no article limit. `--count` and the legacy `batch` command require `--test-mode`. If the service is currently collecting, another task returns “Another operation is using this data folder”; retry after it finishes or pause automatic checks in Settings first. There is one collector at a time per data volume.
+AI tests and previews use the configured provider's quota. Manual tests default to the last 48 hours; `--test-days N` chooses a lookback of 1-365 days for `preview`, `test-ai`, or `new --test-mode`. Normal sending and automatic checks remain fixed at 48 hours. The timeframe applies only to that invocation and does not change saved scheduling. Only articles still available in feeds can be retrieved; this does not search historical publisher archives. Scope and per-source limits still apply, newest first. **Server Dev/test mode is enabled explicitly per command with `--test-mode`:** it permits resending recent articles for that manual run only. Automatic checks always skip prior deliveries. Tests check all enabled feeds, sampling the newest entry from each source before the second entries, while applying the cap to each source. Successful deliveries update history; failed tests leave normal retries unchanged.
 
-Equivalent direct commands are `docker compose run --rm -T digest new` or `docker compose run --rm -T digest preview --test-mode --count 5`. In Settings, choose **Test mode** to select a count and preview or send a single test. The saved test limit defaults to 5; existing `max_posts` settings are retained as test limits only.
+`--count N` overrides **articles per source** for that test only (1–100); it is no longer a global article count. Omitting it uses the saved per-source limit. For example, a test with `--count 5`, two sources, and two webhooks can send up to 20 messages. `--count` and the legacy `batch` command require `--test-mode`. The desktop's Dev mode resend option uses these same date and per-source rules.
+
+Equivalent direct commands are `docker compose run --rm -T digest new` or `docker compose run --rm -T digest preview --test-mode --count 5`. In Settings, choose **Test mode** to select a per-source count, timeframe in days, and whether to preview or send a single test. The standalone Preview and Test AI menu actions also prompt for a timeframe. If the service is already collecting, another task reports that the data folder is busy; retry after it finishes or pause automatic checks first. There is one collector at a time per data volume.
 
 ## Ollama connectivity
 
@@ -94,8 +116,8 @@ Compose creates a named volume, `osint-digest_digest-data`, mounted at `/data`. 
 
 | Path inside the volume | Purpose |
 |---|---|
-| `server.json` | Provider profiles, webhook, schedule, and sources |
-| `state/state.json` | Delivered URLs, pending articles, and retries |
+| `server.json` | Provider profiles, named webhooks, schedule, and sources |
+| `state/state.json` | Per-webhook receipts/retries, pending articles, and cached reports for incomplete deliveries |
 | `preview/` | JSON/CSV previews and AI-test text; these files are not attached to Discord |
 | `runtime.json` | Service heartbeat, phase, and next-check time |
 | `last-run.json` | Last completed task, exit status, and stop status |

@@ -43,12 +43,38 @@ def main():
                 qapp.processEvents()
                 interface = QAccessible.queryAccessibleInterface(window.key_entry)
                 assert interface.text(QAccessible.Text.Name) == 'AI API key'
+                limit = QAccessible.queryAccessibleInterface(window.per_source_limit)
+                assert limit.text(QAccessible.Text.Name) == 'Articles per source'
+                assert window.per_source_limit.isEnabled() and not window.developer_mode.isChecked()
+                scope = QAccessible.queryAccessibleInterface(window.sector_scope)
+                assert scope.text(QAccessible.Text.Name) == 'Sector scope'
+                assert window.sector_scope.count() == 25 and window.sector_scope.currentData() == ''
+                assert len(window.scope_controls) == 7
+                assert all(combo.currentText() == 'All' for combo in window.scope_controls.values())
+                for key, option in (('actor_scope', 'nation_state'), ('social_scope', 'phishing')):
+                    combo = window.scope_controls[key]
+                    combo.setCurrentIndex(combo.findData(option))
+                    assert window.results_panel.filters[key] == option
+                window.reset_filters()
+                window.developer_mode.setChecked(True)
+                timeframe = QAccessible.queryAccessibleInterface(window.test_lookback_days)
+                assert timeframe.text(QAccessible.Text.Name) == 'Test article timeframe'
+                assert window.test_lookback_days.maximum() == 365
+                window.test_lookback_days.setValue(30)
+                window.test_mode.setChecked(True)
+                assert '30 days' in window.test_status.text()
+                window.developer_mode.setChecked(False)
+                assert '48 hours' in window.test_status.text()
                 window.hide_to_tray()
                 qapp.processEvents()
                 assert window.tray.ready
                 atomic_json(args.data_dir / 'smoke-test.json', {
                     'version': VERSION, 'gui': 'ok', 'dpapi': 'ok', 'tray': 'ok', 'accessibility': 'ok',
                     'sources': len(window.sources),
+                    'articles_per_source': window.per_source_limit.value(), 'publication_window_hours': 48,
+                    'sector_scope': window.sector_scope.currentData(), 'scope_options': window.sector_scope.count(),
+                    'test_timeframe_control': 'ok',
+                    'filter_dimensions': len(window.scope_controls), 'filter_selection': 'ok',
                     'credentials_present': bool(window.settings['webhook'] or window.settings['api_key'])})
                 window.exit_app()
                 return 0

@@ -22,6 +22,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 from osint_digest.core.endpoints import ollama_base_url
+from osint_digest.core import sectors, scopes
 from osint_digest.paths import PROJECT_ROOT
 
 ROOT = PROJECT_ROOT
@@ -198,11 +199,60 @@ def parse_feed(raw, source):
             continue
         result.append({'url': canonical(link), 'source': source['name'],
                        'title': (item.findtext('title') or item.findtext(atom + 'title') or 'Untitled')[:250],
-                       'published': item.findtext('pubDate') or item.findtext(atom + 'published') or item.findtext(atom + 'updated') or 'Not provided',
+                       'published': item.findtext('pubDate') or item.findtext(atom + 'published')
+                                    or item.findtext('{http://purl.org/dc/elements/1.1/}date') or 'Not provided',
                        'discovered': now()})
     if not result:
         raise ValueError('No publisher-allowlisted article URLs in feed')
     return result
+
+
+def publication_timestamp(entry):
+    """Read RSS/Atom publication dates without assuming a local timezone."""
+    value = entry.get('published', '')
+    if not isinstance(value, str):
+        return None
+    try:
+        try:
+            date = datetime.fromisoformat(value.strip().replace('Z', '+00:00'))
+        except ValueError:
+            date = parsedate_to_datetime(value.strip())
+        if date.tzinfo is None or date.utcoffset() is None:
+            return None
+        return date.timestamp()
+    except (ValueError, TypeError, OverflowError, OSError, AttributeError):
+        return None
+
+
+def within_window(entry, hours, timestamp=None):
+    if hours is None:
+        return True
+    timestamp = time.time() if timestamp is None else timestamp
+    published = publication_timestamp(entry)
+    return published is not None and timestamp - hours * 3600 <= published <= timestamp
+
+
+def recent_entries(entries, hours, source):
+    if hours is None:
+        return entries
+    timestamp = time.time()
+    eligible = [entry for entry in entries if within_window(entry, hours, timestamp)]
+    skipped = len(entries) - len(eligible)
+    if skipped:
+        print(f'{source}: skipped {skipped} outside the last {hours} hours or without a valid publication date.', flush=True)
+    return sorted(eligible, key=lambda entry: (-publication_timestamp(entry), entry['url']))
+
+
+def limit_per_source(entries, limit):
+    if limit is None:
+        return entries
+    counts, selected = {}, []
+    for entry in entries:
+        source = entry['source']
+        if counts.get(source, 0) < limit:
+            selected.append(entry)
+            counts[source] = counts.get(source, 0) + 1
+    return selected
 
 
 def refang(s):
@@ -439,8 +489,8 @@ def csv_bytes(report):
     return out.getvalue().encode('utf-8-sig')
 
 
-def send_discord(report):
-    webhook = os.environ['DISCORD_WEBHOOK_URL']
+def send_discord(report, webhook=None):
+    webhook = webhook if webhook is not None else os.environ['DISCORD_WEBHOOK_URL']
     p = urllib.parse.urlsplit(webhook)
     if p.scheme != 'https' or p.hostname != 'discord.com' or not re.fullmatch(r'/api/webhooks/\d+/[\w-]+', p.path):
         raise ValueError('Expected a discord.com channel webhook URL')
@@ -472,7 +522,15 @@ def save_state(path, state):
     temp.replace(path)
 
 
-def discover(source, state, getter=None):
+def publish_local(report):
+    """Durably publish one article for the desktop Results reader."""
+    stem = hashlib.sha256(report['url'].encode()).hexdigest()
+    path = ROOT / 'results' / f'{stem}.json'
+    save_state(path, {**report, 'saved_at': now(), 'delivery': 'local'})
+    return path.name
+
+
+def discover(source, state, getter=None, max_age_hours=None):
     """Queue every available unsent article; only confirmed deliveries deduplicate."""
     getter = getter or fetch
     f = state['feeds'].setdefault(source['name'], {})
@@ -486,7 +544,7 @@ def discover(source, state, getter=None):
     if status == 304:
         f['last_success'], f['error'] = now(), None
         return 0
-    entries = parse_feed(raw, source)
+    entries = recent_entries(parse_feed(raw, source), max_age_hours, source['name'])
     added = 0
     for item in entries:
         key = item['url']
@@ -499,7 +557,7 @@ def discover(source, state, getter=None):
     return added
 
 
-def article_report(source, entry):
+def article_report(source, entry, sector_scope='', cached_report=None, filters=None):
     """Use the same retrieval and analysis path for previews, AI tests and delivery."""
     if not robots_allowed(entry['url'], source['hosts']):
         raise ValueError('Publisher robots.txt disallows article retrieval')
@@ -509,10 +567,31 @@ def article_report(source, entry):
     text, scope = text_from_html(raw.decode('utf-8', 'replace'))
     if len(text) < 300:
         raise ValueError('Article text missing or too short')
-    return make_report(entry, text, f'HTML {scope} text; images, PDFs, external IOC files and hidden content not parsed')
+    selected = scopes.selection({**(filters or {}), 'sector_scope': sector_scope})
+    matches = scopes.classify(entry['title'] + '\n' + text)
+    if not scopes.matches(matches, selected):
+        return None  # No AI call, IOC extraction, or published report for a nonmatch.
+    report = cached_report or make_report(entry, text, f'HTML {scope} text; images, PDFs, external IOC files and hidden content not parsed')
+    return {**report, 'sector_catalog': sectors.CATALOG_VERSION, 'sector_matches': matches['sector_scope'],
+            'sector_scope': sector_scope, 'filter_catalog': scopes.CATALOG_VERSION,
+            'filter_matches': matches, 'filters': selected}
 
 
-def test_ai(sources, source_name):
+def scoped_report(source, entry, sector_scope, cached_report=None, filters=None):
+    selected = scopes.selection({**(filters or {}), 'sector_scope': sector_scope})
+    if cached_report:
+        if not any(selected.values()) and 'filters' not in cached_report and not cached_report.get('sector_scope'):
+            return cached_report
+        if not any(selected.values()) or scopes.has_full_metadata(cached_report, selected):
+            return {**cached_report, 'sector_scope': sector_scope, 'filters': selected} if scopes.report_matches(cached_report, selected) else None
+    if any(selected.get(key) for key in scopes.CATALOGS):
+        return article_report(source, entry, sector_scope=sector_scope, cached_report=cached_report, filters=selected)
+    if sector_scope or cached_report:
+        return article_report(source, entry, sector_scope=sector_scope, cached_report=cached_report)
+    return article_report(source, entry)
+
+
+def test_ai(sources, source_name, max_age_hours=None, sector_scope='', filters=None):
     """Test a live article even when the delivery queue is empty; never send or change state."""
     provider = (os.getenv('AI_PROVIDER') or 'none').strip().lower()
     if provider == 'none':
@@ -526,11 +605,25 @@ def test_ai(sources, source_name):
     try:
         print(f"AI TEST: {provider}; fetching latest {source['name']} article (ignores delivery history).", flush=True)
         _, raw, _, _ = fetch(source['feed'], source['hosts'])
-        entry = parse_feed(raw, source)[0]
-        print(f"Article: {entry['title']}", flush=True)
-        print('Retrieving article and requesting an AI summary...', flush=True)
+        entries = recent_entries(parse_feed(raw, source), max_age_hours, source['name'])
+        if not entries:
+            print('AI TEST: no articles with an eligible publication date in this source. Choose another source or try again later.')
+            return 1
         stage = 'article retrieval / analysis'
-        report = article_report(source, entry)
+        report = None
+        for entry in entries:
+            if not within_window(entry, max_age_hours):
+                continue
+            report = scoped_report(source, entry, sector_scope, filters=filters)
+            if report is not None:
+                break
+        if report is None:
+            print('AI TEST: no articles match the selected filters and publication window.')
+            return 1
+        print(f"Article: {entry['title']}", flush=True)
+        if not within_window(entry, max_age_hours):
+            print('AI TEST: article aged out of the publication window while generating its report.')
+            return 1
         out = ROOT / 'preview'
         out.mkdir(exist_ok=True)
         stage = 'saving preview'
@@ -554,7 +647,19 @@ def test_ai(sources, source_name):
         return 1
 
 
-def run(args, sources=None, stop_requested=None):
+def validate_publication_window(args):
+    hours = getattr(args, 'max_age_hours', None)
+    if hours is None:
+        return None  # Preserve the original CLI's unbounded default.
+    if type(hours) is not int or not 1 <= hours <= 8760:
+        raise ValueError('Publication window must be 1-8760 hours (up to 365 days).')
+    testing = getattr(args, 'test_mode', False) or getattr(args, 'dry_run', False) or getattr(args, 'test_ai', None)
+    if hours > 48 and not testing:
+        raise ValueError('Publication windows over 48 hours require a preview, AI test, or --test-mode.')
+    return hours
+
+
+def run(args, sources=None, stop_requested=None, delivery=None):
     # A server cycle supplies a consistent configuration snapshot and can stop
     # between articles, after the current delivery has been recorded.
     if sources is None:
@@ -565,8 +670,16 @@ def run(args, sources=None, stop_requested=None):
         sources = json.loads(source_path.read_text())
     sources = [s for s in sources if s.get('enabled', True)]
     stop_requested = stop_requested or (lambda: False)
+    per_source = getattr(args, 'per_source_limit', None)
+    max_age = validate_publication_window(args)
+    selected = scopes.selection(args)
+    sector_scope = selected['sector_scope']
+    scope_key = scopes.signature(selected)
+    filtering = bool(scope_key)
+    if per_source is not None and (type(per_source) is not int or not 1 <= per_source <= 100):
+        raise ValueError('Articles per source must be 1-100')
     if getattr(args, 'test_ai', None):
-        return test_ai(sources, args.test_ai)
+        return test_ai(sources, args.test_ai, max_age_hours=max_age, sector_scope=sector_scope, filters=selected)
     if args.check_feeds:
         failures = 0
         for s in sources:
@@ -579,57 +692,77 @@ def run(args, sources=None, stop_requested=None):
                 failures += 1
                 print(f"FAIL {s['name']}: {type(e).__name__}")
         return int(failures > 0)
-    if not args.dry_run and not os.getenv('DISCORD_WEBHOOK_URL'):
+    local = getattr(args, 'local', False)
+    if not args.dry_run and not local and delivery is None and not os.getenv('DISCORD_WEBHOOK_URL'):
         raise ValueError('Set DISCORD_WEBHOOK_URL, or use --dry-run')
-    path = ROOT / 'state' / 'state.json'
+    # Publishing locally must not claim that a Discord delivery took place.
+    path = ROOT / 'state' / ('local-state.json' if local else 'state.json')
     state = json.loads(path.read_text()) if path.exists() else {'feeds': {}, 'seen': {}, 'pending': {}}
+    if delivery is not None:
+        delivery.prepare(state)
     errors = 0
+    print('Destination: ' + ('in-app Results' if local else 'Discord'), flush=True)
     test_mode = getattr(args, 'test_mode', False)
+    print('Article filters: ' + scopes.describe(selected), flush=True)
+    if max_age is not None:
+        print(f'Publication window: last {max_age} hours; missing, invalid, and future dates are skipped.', flush=True)
+    if per_source is not None:
+        print(f'Article limit: up to {per_source} per source per check (including retries).', flush=True)
     limit = getattr(args, 'batch', None)
     if limit is None:
         limit = getattr(args, 'max_posts', None)
     if limit is not None and not test_mode:
         raise ValueError('Article limits and repeats require --test-mode')
     if test_mode:
-        limit = 5 if limit is None else limit
-        if not 1 <= limit <= 20:
+        limit = (None if per_source is not None else 5) if limit is None else limit
+        if limit is not None and not 1 <= limit <= 20:
             raise ValueError('Test article limit must be 1-20')
-        print(f'TEST MODE: checking all {len(sources)} enabled sources; up to {limit} articles, including previously sent articles.', flush=True)
+        cap = f'up to {limit} articles' if limit is not None else f'up to {per_source} articles per source'
+        print(f'TEST MODE: checking all {len(sources)} enabled sources; {cap}, including previously sent articles.', flush=True)
         candidates = []
-        selected = set()
+        selected_urls = set()
         for source in sources:
             if stop_requested():
                 break
             try:
                 # Test selections never enter the normal retry queue.
                 _, raw, _, _ = fetch(source['feed'], source['hosts'])
-                candidates.append(parse_feed(raw, source))
+                candidates.append(recent_entries(parse_feed(raw, source), max_age, source['name']))
             except Exception as error:
                 errors += 1
                 print(f"WARNING feed from {source['name']}: {error_label(error)}", flush=True)
         # Sample across publishers before taking a second article from any feed.
         due = []
+        counts = {}
         for index in range(max(map(len, candidates), default=0)):
             for entries in candidates:
-                if index < len(entries) and entries[index]['url'] not in selected:
+                if index < len(entries) and entries[index]['url'] not in selected_urls:
                     entry = entries[index]
-                    selected.add(entry['url'])
+                    if not filtering and per_source is not None and counts.get(entry['source'], 0) >= per_source:
+                        continue
+                    selected_urls.add(entry['url'])
+                    counts[entry['source']] = counts.get(entry['source'], 0) + 1
                     due.append(entry)
-                    if len(due) == limit:
+                    if not filtering and len(due) == limit:
                         break
-            if len(due) == limit:
+            if not filtering and len(due) == limit:
                 break
     else:
-        print(f'Checking all {len(sources)} enabled sources; sending all unsent articles and due retries.', flush=True)
+        print(f'Checking all {len(sources)} enabled sources for eligible unsent articles and due retries.', flush=True)
         # Repair stale retries left by older repeat-batch runs. Never resend these
         # during routine monitoring, even if the feed no longer contains them.
         state['pending'] = {url: entry for url, entry in state['pending'].items()
-                            if state['seen'].get(url, {}).get('status') != 'sent'}
+                            if state['seen'].get(url, {}).get('status') != 'sent'
+                            and within_window(entry, max_age)}
+        if max_age is not None and state.get('max_age_hours') != max_age:
+            for feed in state['feeds'].values():
+                feed['delivery_only'] = False
+            state['max_age_hours'] = max_age
         for source in sources:
             if stop_requested():
                 break
             try:
-                n = discover(source, state)
+                n = discover(source, state, max_age_hours=max_age) if max_age is not None else discover(source, state)
                 print(f"{source['name']}: {n} queued")
             except Exception as e:
                 errors += 1
@@ -639,20 +772,51 @@ def run(args, sources=None, stop_requested=None):
                 save_state(path, state)
     by_name = {s['name']: s for s in sources}
     if not test_mode:
-        due = [x for x in state['pending'].values() if x['source'] in by_name and x.get('retry_after', 0) <= time.time()]
+        due = [x for x in state['pending'].values() if x['source'] in by_name and x.get('retry_after', 0) <= time.time()
+               and (not filtering or x.get('scope_excluded') != scope_key)
+               and (delivery is None or delivery.is_due(x, state))]
         # Stable oldest-discovered first; pending items survive RSS window expiry.
         due.sort(key=lambda x: (x['discovered'], x['url']))
+        if max_age is not None:
+            due.sort(key=lambda x: (-publication_timestamp(x), x['url']))
+        if not filtering:
+            due = limit_per_source(due, per_source)
     completed = 0
     ai_summaries = 0
+    attempted = {}
     for index, entry in enumerate(due, 1):
         if stop_requested():
             print('Stopping after the current operation; queued articles are retained.', flush=True)
             break
         source = by_name[entry['source']]
+        if test_mode and limit is not None and sum(attempted.values()) >= limit:
+            break
+        if per_source is not None and attempted.get(entry['source'], 0) >= per_source:
+            continue
+        if not within_window(entry, max_age):
+            print(f"SKIPPED {entry['source']}: article aged out of the publication window.", flush=True)
+            if not args.dry_run and not test_mode:
+                state['pending'].pop(entry['url'], None)
+                save_state(path, state)
+            continue
         try:
-            print(f"PROCESSING {index}/{len(due)} {entry['source']}: retrieving article and generating report...", flush=True)
-            report = article_report(source, entry)
+            print(f"PROCESSING {index}/{len(due)} {entry['source']}: retrieving article and checking eligibility...", flush=True)
+            cached = entry.get('delivery_report') if delivery is not None and not test_mode else None
+            report = scoped_report(source, entry, sector_scope, cached, filters=selected)
+            if report is None:
+                print(f"SKIPPED {entry['source']}: does not match all selected scopes; no AI analysis or report.", flush=True)
+                if not args.dry_run and not test_mode:
+                    entry['scope_excluded'] = scope_key
+                    save_state(path, state)
+                continue
+            attempted[entry['source']] = attempted.get(entry['source'], 0) + 1
             print(f"AI: {report['ai_status']}", flush=True)
+            if not within_window(entry, max_age):
+                print(f"SKIPPED {entry['source']}: article aged out while generating its report.", flush=True)
+                if not args.dry_run and not test_mode:
+                    state['pending'].pop(entry['url'], None)
+                    save_state(path, state)
+                continue
             if args.dry_run:
                 out = ROOT / 'preview'
                 out.mkdir(exist_ok=True)
@@ -661,11 +825,20 @@ def run(args, sources=None, stop_requested=None):
                 (out / f'{stem}.csv').write_bytes(csv_bytes(report))
                 print(f"PREVIEW {entry['source']}: {len(report['iocs'])} candidates -> preview/{stem}.json")
             else:
-                message_id = send_discord(report)
-                state['seen'][entry['url']] = {'status': 'sent', 'at': now(), 'message_id': message_id}
+                if delivery is not None:
+                    receipt, complete, failures = delivery.send(entry, report, state, path,
+                                                                test_mode=test_mode, stop_requested=stop_requested,
+                                                                max_age_hours=max_age)
+                    errors += failures
+                    if not complete:
+                        continue
+                else:
+                    receipt = publish_local(report) if local else send_discord(report)
+                state['seen'][entry['url']] = {'status': 'sent', 'at': now(),
+                                             'result_file' if local else 'message_id': receipt}
                 state['pending'].pop(entry['url'], None)
                 save_state(path, state)
-                print(f"POSTED {entry['source']}")
+                print(f"{'PUBLISHED IN APP' if local else 'POSTED'} {entry['source']}")
             completed += 1
             ai_summaries += bool(report['analysis'])
         except Exception as e:
@@ -678,10 +851,12 @@ def run(args, sources=None, stop_requested=None):
             print(f"WARNING article from {entry['source']}: {error_label(e)}; {retry_note}")
             if not args.dry_run and not test_mode:
                 save_state(path, state)
-    print(f"{'Previewed' if args.dry_run else 'Posted'}: {completed}; AI summaries: {ai_summaries}; excerpts: {completed - ai_summaries}")
-    print(f"Pending: {len(state['pending'])}; source/article errors: {errors}")
+    outcome = 'Previewed' if args.dry_run else ('Published in app' if local else 'Posted')
+    print(f"{outcome}: {completed}; AI summaries: {ai_summaries}; excerpts: {completed - ai_summaries}")
+    excluded = sum(filtering and entry.get('scope_excluded') == scope_key for entry in state['pending'].values())
+    print(f"Pending: {len(state['pending']) - excluded}; outside selected scopes: {excluded}; source/article errors: {errors}")
     if not due:
-        print('No articles eligible this run. To test AI on a previously seen article: py -3 bot.py --test-ai')
+        print('No articles eligible this run. Check publication dates, delivery history, and retry delays.')
     return int(errors > 0)
 
 
@@ -694,6 +869,7 @@ def main():
     load_env()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--dry-run', action='store_true', help='No Discord messages or state writes; configured AI can still be called')
+    parser.add_argument('--local', action='store_true', help='Publish to local Results instead of Discord, with separate delivery history')
     parser.add_argument('--check-feeds', action='store_true', help='Read-only feed diagnostics; no AI or Discord')
     parser.add_argument('--test-ai', nargs='?', const='*', metavar='SOURCE',
                         help='Test configured AI on the latest article, even if already sent; optional source name. Local preview only; no Discord or state writes')
@@ -701,6 +877,10 @@ def main():
     parser.add_argument('--batch', type=int, metavar='N',
                         help='Legacy alias for --max-posts; requires --test-mode')
     parser.add_argument('--max-posts', type=int, metavar='N', help='Test article limit, 1-20 (default 5); requires --test-mode')
+    parser.add_argument('--per-source-limit', type=int, metavar='N', help='Process up to N eligible articles per source, 1-100')
+    parser.add_argument('--max-age-hours', type=int, metavar='H', help='Publication window in hours: 1-48 normally, up to 8760 for previews, AI tests, or --test-mode')
+    for key, choices in scopes.CHOICES.items():
+        parser.add_argument('--' + key.replace('_', '-'), choices=list(choices), default='', help=scopes.LABELS[key] + ' filter; omitted means All')
     args = parser.parse_args()
     if args.test_ai and args.check_feeds:
         parser.error('--test-ai cannot be combined with --check-feeds')
@@ -713,6 +893,12 @@ def main():
     limit = args.batch if args.batch is not None else args.max_posts
     if limit is not None and not 1 <= limit <= 20:
         parser.error('Test article limit must be 1-20')
+    if args.per_source_limit is not None and not 1 <= args.per_source_limit <= 100:
+        parser.error('Articles per source must be 1-100')
+    try:
+        validate_publication_window(args)
+    except ValueError as error:
+        parser.error(str(error))
     try:
         # OS releases this lock on process exit/crash; prevents overlapping local timers.
         with (ROOT / '.run.lock').open('a+b') as lock:

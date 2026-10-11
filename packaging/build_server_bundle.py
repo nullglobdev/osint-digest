@@ -6,16 +6,17 @@ import io
 from pathlib import Path
 import tarfile
 
-VERSION = '1.1.0'
+VERSION = '1.6.0'
 FILES = ('Dockerfile', '.dockerignore', 'compose.yaml', 'bot.py', 'server.py',
          'osint_digest/__init__.py', 'osint_digest/paths.py',
          'osint_digest/core/__init__.py', 'osint_digest/core/collector.py',
-         'osint_digest/core/endpoints.py', 'osint_digest/core/providers.py', 'osint_digest/core/sources.py',
+         'osint_digest/core/sectors.py', 'osint_digest/core/scopes.py', 'osint_digest/core/endpoints.py', 'osint_digest/core/providers.py', 'osint_digest/core/sources.py',
          'osint_digest/server/__init__.py', 'osint_digest/server/app.py',
-         'osint_digest/server/settings.py', 'osint_digest/server/setup.py',
-         'config/sources.json', 'docs/CONTAINER.md', 'docs/VALIDATION.md',
+         'osint_digest/server/delivery.py', 'osint_digest/server/settings.py', 'osint_digest/server/setup.py',
+         'config/sources.json', 'docs/CONTAINER.md', 'docs/SCOPES.md', 'docs/VALIDATION.md',
          'scripts/server.sh', 'scripts/test_container.py', 'tests/__init__.py',
-         'tests/test_bot.py', 'tests/test_server.py')
+         'tests/test_bot.py', 'tests/test_server.py', 'tests/test_webhooks.py', 'tests/test_collection_window.py',
+         'tests/test_sectors.py', 'tests/test_scopes.py')
 
 
 def main():
@@ -33,6 +34,7 @@ def main():
                 data = (root / source).read_bytes().replace(b'\r\n', b'\n')
                 if name == 'README.md':
                     data = data.replace(b'](VALIDATION.md)', b'](docs/VALIDATION.md)')
+                    data = data.replace(b'](SCOPES.md)', b'](docs/SCOPES.md)')
                 info = tarfile.TarInfo(prefix + '/' + name)
                 info.size = len(data)
                 info.mode = 0o755 if name.endswith('.sh') else 0o644

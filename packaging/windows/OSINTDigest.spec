@@ -6,7 +6,7 @@ from importlib.metadata import distribution
 root = Path(SPECPATH).parents[1]
 data = [(str(root / 'config/sources.json'), 'config'), (str(root / 'assets/app.ico'), 'assets')]
 data += [(str(root / 'docs' / name), 'docs') for name in (
-    'DESKTOP.md', 'CONTAINER.md', 'ACCESSIBILITY.md', 'VALIDATION.md', 'THIRD_PARTY_NOTICES.txt')]
+    'DESKTOP.md', 'CONTAINER.md', 'SCOPES.md', 'ACCESSIBILITY.md', 'VALIDATION.md', 'THIRD_PARTY_NOTICES.txt')]
 data += [(str(file), 'assets') for file in (root / 'assets').glob('*.svg')]
 license_root = root / 'packaging/licenses/qt'
 data += [(str(file), 'licenses/qt/' + file.parent.relative_to(license_root).as_posix())

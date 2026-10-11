@@ -12,7 +12,7 @@ case "${1:-help}" in
         docker compose run --rm digest setup
         echo 'Setup saved. Start background checks with: sh scripts/server.sh start'
         ;;
-    settings|sources|models) docker compose run --rm digest "$1" ;;
+    settings|sources|models|webhooks|scope|filters) docker compose run --rm digest "$1" ;;
     start) docker compose up -d digest ;;
     stop) docker compose stop digest ;;
     logs) docker compose logs --follow --tail 100 digest ;;
@@ -28,8 +28,9 @@ case "${1:-help}" in
         docker compose run --rm -T digest "$@"
         ;;
     *)
-        echo 'Usage: sh scripts/server.sh setup|settings|sources|models|start|stop|status|logs|update'
+        echo 'Usage: sh scripts/server.sh setup|settings|sources|models|webhooks|scope|filters|start|stop|status|logs|update'
         echo 'Actions: check-feeds|test-ai [--source NAME]|preview|new|test-discord|backup'
-        echo 'Manual tests: new|preview --test-mode [--count N] (allows repeat articles)'
+        echo 'Manual tests: new|preview --test-mode [--count N] [--test-days 1-365] (allows repeat articles)'
+        echo 'Previews and AI tests also accept --test-days 1-365; normal checks keep the 48-hour window.'
         ;;
 esac

@@ -50,8 +50,8 @@ assert not Path('/app/settings.json').exists()
 assert not Path('/app/osint_digest/desktop').exists()
 assert not list(Path('/app').rglob('*.pyc'))
 config, revision = load_config(root)
-assert not config['enabled'] and not config['webhook']
-config['max_posts'], config['interval_minutes'] = 10, 360
+assert not config['enabled'] and not config['webhooks']
+config['per_source_limit'], config['interval_minutes'] = 10, 360
 save_config(root, config, revision)
 (root / 'state' / 'marker').write_text('persistent history')
 try:
@@ -77,24 +77,35 @@ from osint_digest.server import app as server
 from osint_digest.server.settings import load_config, save_config
 root = Path('/data')
 config, revision = load_config(root)
-config['webhook'] = 'https://discord.com/api/webhooks/123/offline-test'
+config['webhooks'] = [{'name':'First', 'url':'https://discord.com/api/webhooks/123/offline-test', 'enabled':True},
+                      {'name':'Second', 'url':'https://discord.com/api/webhooks/456/offline-second', 'enabled':True}]
 config['sources'] = [{'name':'Test', 'feed':'https://publisher.example/rss', 'hosts':['publisher.example'], 'enabled':True}]
 save_config(root, config, revision)
-pending = {f'https://publisher.example/{i}': {'source':'Test', 'url':f'https://publisher.example/{i}', 'title':str(i), 'discovered':str(i), 'published':''} for i in range(2)}
+published = bot.now()
+pending = {f'https://publisher.example/{i}': {'source':'Test', 'url':f'https://publisher.example/{i}', 'title':str(i), 'discovered':str(i), 'published':published} for i in range(2)}
 bot.save_state(root / 'state/state.json', {'feeds':{}, 'pending':pending, 'seen':{}})
 stop = threading.Event()
-def sent(report):
+def sent(report, *, webhook):
     stop.set()
     return 'offline-message'
 with patch.object(bot, 'discover', return_value=0), patch.object(bot, 'article_report', return_value={'analysis':None, 'ai_status':'No AI'}), patch.object(bot, 'send_discord', side_effect=sent), redirect_stdout(io.StringIO()):
     assert server.run_action(root, 'new', stop=stop) == 0
 state = json.loads((root / 'state/state.json').read_text())
-assert len(state['seen']) == 1 and len(state['pending']) == 1
+assert not state['seen'] and len(state['pending']) == 2
+assert state['deliveries']['https://publisher.example/0']['123']['message_id'] == 'offline-message'
+# Resume after stopping between webhooks; the acknowledged destination is skipped.
+with patch.object(bot, 'discover', return_value=0), patch.object(bot, 'article_report', return_value={'analysis':None, 'ai_status':'No AI'}) as report, patch.object(bot, 'send_discord', return_value='resumed-message') as send, redirect_stdout(io.StringIO()):
+    assert server.run_action(root, 'new') == 0
+    assert report.call_count == 1  # first article reuses its saved report
+    assert send.call_count == 3  # second target for article 0, both for article 1
+    assert send.call_args_list[0].kwargs['webhook'].endswith('/456/offline-second')
+state = json.loads((root / 'state/state.json').read_text())
+assert len(state['seen']) == 2 and not state['pending']
 with redirect_stdout(io.StringIO()):
     archive = server.backup(root)
 assert archive.exists()
 config, revision = load_config(root)
-config['webhook'] = ''
+config['webhooks'] = []
 save_config(root, config, revision)
 ''')
         docker('stop', '--time', '15', name)
@@ -107,11 +118,11 @@ from pathlib import Path
 from osint_digest.server.settings import load_config
 root = Path('/data')
 config, _ = load_config(root)
-assert config['max_posts'] == 10 and config['interval_minutes'] == 360
-assert not config['webhook'] and not config['enabled']
+assert config['per_source_limit'] == 10 and config['interval_minutes'] == 360
+assert not config['webhooks'] and not config['enabled']
 assert (root / 'state/marker').read_text() == 'persistent history'
 state = json.loads((root / 'state/state.json').read_text())
-assert len(state['seen']) == 1 and len(state['pending']) == 1
+assert len(state['seen']) == 2 and not state['pending']
 ''')
         print('Container acceptance passed: non-root/read-only runtime, private settings, no GUI or credentials in image,')
         print('configuration persistence, process locking, safe terminal behavior, delivery-state recovery, backup, and graceful restart.')

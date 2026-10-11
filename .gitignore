@@ -4,6 +4,7 @@
 .venv/
 __pycache__/
 preview/
+results/
 *.pyc
 .run.lock
 .build-venv/
