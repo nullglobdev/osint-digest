@@ -137,13 +137,13 @@ class DigestApp(QMainWindow):
         self.destination = label('', 'accent')
         top.addWidget(self.destination)
         outer.addWidget(hero)
-        self.tabs = named(QTabWidget(), 'Workspace sections', 'Use Ctrl+1 through Ctrl+5 to switch sections. Ctrl+6 opens Previews in Dev mode. Ctrl+7 opens Filters.')
+        self.tabs = named(QTabWidget(), 'Workspace sections', 'Use Ctrl+1 through Ctrl+5 to switch sections. Ctrl+6 opens Previews in Dev mode. Ctrl+7 focuses article filters on the Dashboard.')
         self.tabs.setDocumentMode(True)
         self.tabs.tabBar().setDrawBase(False)
         self.tabs.setMinimumHeight(320)
         outer.addWidget(self.tabs, 1)
         self.pages = []
-        for title in ('Dashboard', 'Connection', 'Sources', 'Results', 'Preferences', 'Previews', 'Filters'):
+        for title in ('Dashboard', 'Connection', 'Sources', 'Results', 'Preferences', 'Previews'):
             scroll = named(QScrollArea(), title + ' scroll area')
             scroll.setFrameShape(QFrame.Shape.NoFrame)
             scroll.setWidgetResizable(True)
@@ -155,7 +155,6 @@ class DigestApp(QMainWindow):
             self.tabs.addTab(scroll, title)
             self.pages.append((scroll, layout))
         self._preferences(self.pages[4][1])
-        self._filters(self.pages[6][1])
         self._dashboard(self.pages[0][1])
         self._connection(self.pages[1][1])
         self._sources(self.pages[2][1])
@@ -196,8 +195,9 @@ class DigestApp(QMainWindow):
                              ('Ctrl++', lambda: self.adjust_scale(1)), ('Ctrl+=', lambda: self.adjust_scale(1)),
                              ('Ctrl+-', lambda: self.adjust_scale(-1)), ('Ctrl+0', lambda: self.scale_combo.setCurrentIndex(0))]:
             self.shortcut(keys, action)
-        for i in range(7):
+        for i in range(len(self.pages)):
             self.shortcut(f'Ctrl+{i + 1}', lambda index=i: self.focus_page(index))
+        self.shortcut('Ctrl+7', self.focus_filters)
 
     def shortcut(self, keys, action):
         shortcut = QShortcut(QKeySequence(keys), self)
@@ -264,9 +264,6 @@ class DigestApp(QMainWindow):
         self.per_source_limit.setValue(self.settings['per_source_limit'])
         self.field(batch, 'Articles per source', self.per_source_limit,
                    'Maximum articles per source per check, from 1 to 100. Applies to manual and automatic checks, previews, and Dev mode resends.')
-        self.filter_summary = label('', 'muted')
-        batch.addWidget(self.filter_summary)
-        batch.addWidget(self.button('Article filters', lambda: self.focus_page(6), managed=False))
         self.send_button, self.preview_button, self.ai_test_button = self.actions(batch, [
             ('Collect new', lambda: self.start('test' if self.test_mode.isChecked() else 'new'), True),
             ('Preview', lambda: self.start('test-preview' if self.test_mode.isChecked() else 'preview'), False),
@@ -291,6 +288,7 @@ class DigestApp(QMainWindow):
         self.monitor_status = label('Automatic checks are off', 'accent')
         auto.addWidget(self.monitor_status)
         auto.addWidget(label('Always checks for new articles. The PC must be awake and online.', 'muted'))
+        self._filters(self.dashboard_grid)
         activity = self.card(page, 'Activity')
         self.actions(activity, [('Check feeds', lambda: self.start('feeds'), False)])
         self.activity = self.text_area('Activity log', 'Read-only task output. Tab moves to the next control; Ctrl+A and Ctrl+C copy text.')
@@ -299,12 +297,15 @@ class DigestApp(QMainWindow):
         page.setStretch(1, 1)
 
     def _filters(self, page):
-        card = self.card(page, 'Article filters', 'Choose one option per scope. An article must match every selected scope before AI analysis and publishing. All adds no restriction.')
+        card = self.card(page, 'Article filters', 'Every selected scope must match. All leaves a scope unrestricted.')
+        self.filters_card = card.parentWidget()
+        self.filter_summary = label('', 'muted')
+        card.addWidget(self.filter_summary)
         form = QFormLayout()
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         form.setHorizontalSpacing(18)
-        form.setVerticalSpacing(10)
+        form.setVerticalSpacing(7)
         self.scope_controls = {}
         for key, choices in scopes.CHOICES.items():
             combo = QComboBox()
@@ -323,8 +324,10 @@ class DigestApp(QMainWindow):
         card.addLayout(form)
         self.actions(card, [('View selected keywords', self.show_scope_keywords, False),
                             ('Reset all filters', self.reset_filters, False)])
-        card.addWidget(label('Synonyms are alternatives within an option. Education combinations require both concepts anywhere in the article. These filters match keywords, not confirmed actor attribution. Date windows and article limits still apply.', 'muted'))
-        page.addStretch()
+
+    def focus_filters(self):
+        self.focus_page(0)
+        self.sector_scope.setFocus()
 
     def _preferences(self, page):
         appearance = self.card(page, 'Appearance and accessibility')
@@ -569,12 +572,14 @@ class DigestApp(QMainWindow):
         for name in ('results_panel', 'preview_panel'):
             if hasattr(self, name):
                 getattr(self, name).set_compact(compact)
-        if hasattr(self, 'auto_card'):
+        if hasattr(self, 'filters_card'):
             wide = self.width() >= 900 and self.scale_combo.currentData() == 100
             self.dashboard_grid.removeWidget(self.batch_card)
             self.dashboard_grid.removeWidget(self.auto_card)
+            self.dashboard_grid.removeWidget(self.filters_card)
             self.dashboard_grid.addWidget(self.batch_card, 0, 0)
-            self.dashboard_grid.addWidget(self.auto_card, 0 if wide else 1, 1 if wide else 0)
+            self.dashboard_grid.addWidget(self.auto_card, 1, 0)
+            self.dashboard_grid.addWidget(self.filters_card, 0 if wide else 2, 1 if wide else 0, 2 if wide else 1, 1)
             self.dashboard_grid.setColumnStretch(0, 1)
             self.dashboard_grid.setColumnStretch(1, 1 if wide else 0)
 
@@ -663,7 +668,7 @@ class DigestApp(QMainWindow):
             'Article reader: Tab through article, CVE, and ATT&CK links; Enter opens the focused link in your browser.\n'
             'Ctrl+1 to Ctrl+5: Dashboard, Connection, Sources, Results, Preferences.\n'
             'Ctrl+6: Previews (Dev mode only).\n'
-            'Ctrl+7: Article filters.\n'
+            'Ctrl+7: focus article filters on the Dashboard.\n'
             'Ctrl+S: save connection and source changes.\n'
             'Ctrl+Plus / Ctrl+Minus: resize text. Ctrl+0: reset to 100%.\n'
             'F1: open this help. Escape: cancel a dialog.\n\n'

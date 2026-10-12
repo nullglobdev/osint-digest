@@ -1,5 +1,5 @@
 #ifndef AppVersion
-#define AppVersion "1.8.0"
+#define AppVersion "1.8.1"
 #endif
 #ifndef AppSourceDir
 #define AppSourceDir "../../dist/" + AppVersion + "/OSINTDigest"

@@ -15,7 +15,7 @@ from osint_digest.core import scopes
 from osint_digest.paths import resource_path
 
 APP_NAME = 'OSINT Digest'
-VERSION = '1.8.0'
+VERSION = '1.8.1'
 DEFAULTS = {'provider': 'gemini', 'model': 'gemini-3.1-flash-lite',
             'webhook': '', 'api_key': '', 'per_source_limit': 5, 'interval_minutes': 60,
             'close_to_tray': True, 'profiles': {}, 'theme': 'dark', 'text_scale': 100,

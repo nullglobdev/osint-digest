@@ -1,4 +1,4 @@
-# Accessibility in OSINT Digest 1.8
+# Accessibility in OSINT Digest 1.8.1
 
 The Windows desktop interface has been rebuilt with standard Qt controls, rounded navy panels, and accessibility features targeting the Revised Section 508 software requirements. This is an implementation and test record, not a completed Accessibility Conformance Report or a claim of full Section 508 conformance. End-to-end assistive-technology testing remains required.
 
@@ -22,7 +22,7 @@ The Windows desktop interface has been rebuilt with standard Qt controls, rounde
 | Alt+Down | Open a model/provider/filter dropdown |
 | Ctrl+1 through Ctrl+5 | Dashboard / Connection / Sources / Results / Preferences |
 | Ctrl+6 | Previews, when Dev mode is enabled |
-| Ctrl+7 | Article filters |
+| Ctrl+7 | Focus the first article filter on the Dashboard |
 | Ctrl+S | Save connection and source changes |
 | Ctrl+Plus / Ctrl+Minus / Ctrl+0 | Increase / decrease / reset text size |
 | F1 | Open scrollable keyboard and accessibility help |

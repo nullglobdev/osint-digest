@@ -338,7 +338,9 @@ class GuiTests(unittest.TestCase):
     def test_seven_filter_selectors_combine_persist_and_reset_without_deleting_reports(self):
         from osint_digest.core import scopes
         app = self.app
-        app.focus_page(6)
+        app.focus_page(0)
+        self.assertEqual([app.tabs.tabText(i) for i in range(app.tabs.count())],
+                         ['Dashboard', 'Connection', 'Sources', 'Results', 'Preferences', 'Previews'])
         selected = {'sector_scope': 'education', 'actor_scope': 'nation_state', 'social_scope': 'phishing',
                     'access_scope': 'zero_day', 'malware_scope': 'data_breach',
                     'other_scope': 'lateral_movement', 'education_scope': 'university_phishing'}
@@ -354,7 +356,7 @@ class GuiTests(unittest.TestCase):
         for key, option in selected.items():
             combo = app.scope_controls[key]
             self.assertEqual(combo.currentText(), 'All')
-            self.assertTrue(app.pages[6][0].widget().isAncestorOf(combo))
+            self.assertTrue(app.pages[0][0].widget().isAncestorOf(combo))
             self.assertEqual(QAccessible.queryAccessibleInterface(combo).text(QAccessible.Text.Name),
                              'Sector scope' if key == 'sector_scope' else scopes.LABELS[key])
             combo.setCurrentIndex(combo.findData(option))
@@ -375,12 +377,12 @@ class GuiTests(unittest.TestCase):
     def test_filters_have_keyboard_shortcut_and_dropdown_navigation(self):
         app = self.app
         app.activateWindow()
-        app.focus_page(0)
-        app.send_button.setFocus()
+        app.focus_page(1)
+        app.key_entry.setFocus()
         _QAPP.processEvents()
-        QTest.keyClick(app.send_button, Qt.Key.Key_7, Qt.KeyboardModifier.ControlModifier)
-        self.assertEqual(app.tabs.currentIndex(), 6)
-        app.sector_scope.setFocus()
+        QTest.keyClick(app.key_entry, Qt.Key.Key_7, Qt.KeyboardModifier.ControlModifier)
+        self.assertEqual(app.tabs.currentIndex(), 0)
+        self.assertIs(_QAPP.focusWidget(), app.sector_scope)
         _QAPP.processEvents()
         QTest.keyClick(app.sector_scope, Qt.Key.Key_Tab)
         self.assertIs(_QAPP.focusWidget(), app.scope_controls['actor_scope'])
@@ -391,7 +393,7 @@ class GuiTests(unittest.TestCase):
         app = self.app
         app.scale_combo.setCurrentIndex(app.scale_combo.findData(200))
         app.resize(640, 480)
-        app.focus_page(6)
+        app.focus_page(0)
         combo = app.scope_controls['education_scope']
         combo.setFocus()
         for _ in range(3):

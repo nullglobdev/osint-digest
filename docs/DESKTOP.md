@@ -4,21 +4,21 @@ For continuous operation on a server without a GUI, use the separate [container 
 
 ## Install and connect
 
-1. Download the Windows installer from [GitHub Releases](https://github.com/nullglobdev/osint-digest/releases/latest) and run it. The build instructions below produce `OSINTDigest-Setup-1.8.0-x64.exe` for this source version. It installs for your Windows user, without requiring administrator rights. Windows 10/11 x64 is the target platform; Python is bundled.
+1. Download the Windows installer from [GitHub Releases](https://github.com/nullglobdev/osint-digest/releases/latest) and run it. The build instructions below produce `OSINTDigest-Setup-1.8.1-x64.exe` for this source version. It installs for your Windows user, without requiring administrator rights. Windows 10/11 x64 is the target platform; Python is bundled.
 2. Open **OSINT Digest** from the Start menu.
 3. In **Connection**, choose a summary provider and configure its **AI API key** and model, or select **Publisher excerpts** to collect without AI. Leave **Discord webhook URL** blank to publish in the app's **Results** tab. Add a webhook if you want Discord delivery. Click **Save connection**. Existing CLI users can select **Import from .env** to fill these fields from their own local file.
 4. If using Discord, **Test Discord connection** verifies access without sending a message.
 5. In **Sources**, enable the publishers you want or use **Add source** to add your own RSS/Atom feed, then **Save sources**. Every enabled source is checked.
 6. Set **Articles per source** on the Dashboard (1–100, default 5), then click **Collect new**. The header shows the destination: **Publish in Results** or **Publish to Discord**. Discord receives a separate message per article, without CSV or JSON attachments. Local publishing saves the article in Results for reading now or after restarting the app.
 
-The portable alternative is `OSINTDigest-Portable-1.8.0-x64.zip`: extract the entire ZIP and run `OSINTDigest.exe` inside its folder. Keep the `_internal` folder beside the executable. No separate Python installation is needed.
+The portable alternative is `OSINTDigest-Portable-1.8.1-x64.zip`: extract the entire ZIP and run `OSINTDigest.exe` inside its folder. Keep the `_internal` folder beside the executable. No separate Python installation is needed.
 
 ## Everyday use
 
 - **Articles per source** is always visible on the Dashboard and saves immediately. It caps eligible article attempts from each source during every manual or automatic check, including retries, previews, and Dev mode resends. For example, 5 with 10 enabled sources can publish up to 50 articles per check.
-- **Filters** provides independent Sector, Threat actor, Social engineering, Access & exploitation, Malware & impact, Other styles, and Education combinations dropdowns. Each defaults to **All**. Every selected scope must match; aliases within an option are alternatives. Filtering happens before AI analysis, and only matches consume article limits. Choices save immediately. Use **View selected keywords** or **Reset all filters**. The Dashboard shows the number of active scopes and an **Article filters** shortcut. See [SCOPES.md](SCOPES.md).
+- **Dashboard > Article filters** provides independent Sector, Threat actor, Social engineering, Access & exploitation, Malware & impact, Other styles, and Education combinations dropdowns. Each defaults to **All**. Every selected scope must match; aliases within an option are alternatives. Filtering happens before AI analysis, and only matches consume article limits. Choices save immediately. Use **View selected keywords** or **Reset all filters**. The active-scope count and all seven dropdowns sit beside the collection controls on wider windows and stack below them on smaller windows or with larger text. See [SCOPES.md](SCOPES.md).
 - **Collect new** checks every enabled feed and selects the newest unsent articles published within the last **48 hours**, up to the per-source limit. Successful deliveries are remembered across restarts. Remaining eligible articles wait for later checks; expired retries are removed from the queue.
-- **Results** contains articles published locally when the webhook is blank. Search by title or publisher, select an article to read its summary, references and IOC candidates, and click the article, CVE, or ATT&CK links to open them in your default browser. **Open source article** opens the publisher's page too. Tab through the reader's links and press Enter for keyboard access. The reader refreshes as articles arrive and preserves your selected article. Existing results remain available when you add a webhook. The Filters tab also controls this view; reset all filters to show all saved articles again.
+- **Results** contains articles published locally when the webhook is blank. Search by title or publisher, select an article to read its summary, references and IOC candidates, and click the article, CVE, or ATT&CK links to open them in your default browser. **Open source article** opens the publisher's page too. Tab through the reader's links and press Enter for keyboard access. The reader refreshes as articles arrive and preserves your selected article. Existing results remain available when you add a webhook. The Dashboard filters also control this view; reset all filters to show all saved articles again.
 - Local publication and Discord delivery have separate histories. Saving an article locally does not mark it sent to Discord. Adding a webhook later can send articles previously published only in the app. Clearing a webhook uses the existing local history again.
 - **Preferences → Enable Dev mode** reveals the **Previews** tab and Dashboard **Preview** and **Test AI** actions. Previews use configured AI quota but never publish results or change delivery history. These tools are hidden and cannot run through the desktop worker while Dev mode is off.
 - In **Preferences > Developer tools**, enable Dev mode and set **Test article timeframe** to 1-365 days (default 2). This lookback applies to **Preview**, **Test AI**, and **Collect test articles**. Enable **Allow resends for manual tests**, then choose **Collect test articles** on the Dashboard to publish within that timeframe. Normal **Collect new** and automatic checks always use 48 hours. The timeframe saves immediately; Allow resends starts off each time the app opens. All selected scopes and the per-source article limit still apply. Successful tests update delivery history; failed tests do not change normal retries.
@@ -41,7 +41,7 @@ For custom sources, enter a name and public HTTPS RSS/Atom URL. The feed hostnam
 
 The compact desktop workspace uses rounded navy panels, cyan accents, a small header, and tighter controls and spacing. Open **Preferences** to select **Dark**, **Light**, or **Windows** under Theme and choose **Text size** from 100% to 200%. Preferences save immediately. Windows contrast themes take priority over custom colors.
 
-Use Tab/Shift+Tab to move between controls, Ctrl+1 through Ctrl+5 for Dashboard, Connection, Sources, Results, and Preferences; Ctrl+6 opens Previews in Dev mode; Ctrl+7 opens Filters. Ctrl+S saves connection/source settings; F1 opens **Keyboard help**. Focus has a visible outline and scrolls into view. Controls wrap at smaller widths and larger text sizes. **Preferences → Pause live activity updates** pauses the Activity log display while collection continues. Background behavior and Dev mode are also in Preferences.
+Use Tab/Shift+Tab to move between controls, Ctrl+1 through Ctrl+5 for Dashboard, Connection, Sources, Results, and Preferences; Ctrl+6 opens Previews in Dev mode; Ctrl+7 focuses the first article filter on the Dashboard. Ctrl+S saves connection/source settings; F1 opens **Keyboard help**. Focus has a visible outline and scrolls into view. Controls wrap at smaller widths and larger text sizes. **Preferences → Pause live activity updates** pauses the Activity log display while collection continues. Background behavior and Dev mode are also in Preferences.
 
 The interface uses Qt controls with accessible names, roles, and states for Windows assistive technology. See [ACCESSIBILITY.md](ACCESSIBILITY.md) for tested features, keyboard instructions, and manual checks still required before claiming full Section 508 conformance.
 
@@ -71,12 +71,12 @@ Build on Windows x64 with Python 3.12 and [Inno Setup 6](https://jrsoftware.org/
 
 The script creates `.build-venv`, installs the pinned build dependencies, runs the offline tests, generates the app icon, builds the PyInstaller app, compiles the installer, creates a portable ZIP, and writes `dist/SHA256SUMS.txt`.
 
-The unpacked app is `dist/1.8.0/OSINTDigest/OSINTDigest.exe`. Versioned build folders allow an older copy to stay open during a build. Close the older app before reviewing the new version with the same profile. To run from source, install `requirements/desktop.txt` and run `py -3 desktop.py`.
+The unpacked app is `dist/1.8.1/OSINTDigest/OSINTDigest.exe`. Versioned build folders allow an older copy to stay open during a build. Close the older app before reviewing the new version with the same profile. To run from source, install `requirements/desktop.txt` and run `py -3 desktop.py`.
 
 Distribution files:
 
-- `dist/installer/OSINTDigest-Setup-1.8.0-x64.exe`
-- `dist/OSINTDigest-Portable-1.8.0-x64.zip`
+- `dist/installer/OSINTDigest-Setup-1.8.1-x64.exe`
+- `dist/OSINTDigest-Portable-1.8.1-x64.zip`
 - `dist/SHA256SUMS.txt`
 
 `packaging/windows/OSINTDigest.spec` uses an explicit resource allowlist. Do not add `.env`, app-data folders, `state`, `preview`, or credentials to it. For packaging validation, `OSINTDigest.exe --smoke-test --data-dir <temporary-folder>` initializes the GUI without showing its window, checks packaged resources, Windows encryption, the tray, and accessible field metadata, and writes `smoke-test.json`. It performs no network requests and sends no messages.

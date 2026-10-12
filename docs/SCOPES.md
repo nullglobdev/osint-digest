@@ -12,7 +12,7 @@ Choose one option independently in each of seven scopes. **All** is the default 
 | Other styles | Other tactics, conditions, and disclosure channels | `--other-scope` |
 | Education combinations | Paired campus-related concepts | `--education-scope` |
 
-- **Windows:** open the **Filters** tab (Ctrl+7), or **Article filters** on the Dashboard. Selection saves immediately and applies to the next task and the Results/Previews views. **View selected keywords** explains the chosen options; **Reset all filters** returns every scope to All.
+- **Windows:** open **Dashboard > Article filters**. Ctrl+7 jumps directly to the first filter. Selection saves immediately and applies to the next task and the Results/Previews views. **View selected keywords** explains the chosen options; **Reset all filters** returns every scope to All.
 - **Linux/server:** `sh scripts/server.sh filters`, or Settings option **14 Article filters**. Choose a scope, select an option, and choose **0 Done** to save. The setup wizard offers the same menu. The existing `scope` command remains an alias. One saved combination applies to every enabled webhook.
 - **Original CLI:** provide the desired flags using option IDs below; omit a flag for All. Example: `py -3 bot.py --sector-scope education --actor-scope nation_state --social-scope phishing --per-source-limit 5 --max-age-hours 48 --dry-run`.
 

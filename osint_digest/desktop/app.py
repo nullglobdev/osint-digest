@@ -51,6 +51,9 @@ def main():
                 assert window.sector_scope.count() == 25 and window.sector_scope.currentData() == ''
                 assert len(window.scope_controls) == 7
                 assert all(combo.currentText() == 'All' for combo in window.scope_controls.values())
+                assert all(window.pages[0][0].widget().isAncestorOf(combo)
+                           for combo in window.scope_controls.values())
+                assert window.tabs.count() == 6
                 for key, option in (('actor_scope', 'nation_state'), ('social_scope', 'phishing')):
                     combo = window.scope_controls[key]
                     combo.setCurrentIndex(combo.findData(option))
@@ -74,7 +77,7 @@ def main():
                     'articles_per_source': window.per_source_limit.value(), 'publication_window_hours': 48,
                     'sector_scope': window.sector_scope.currentData(), 'scope_options': window.sector_scope.count(),
                     'test_timeframe_control': 'ok',
-                    'filter_dimensions': len(window.scope_controls), 'filter_selection': 'ok',
+                    'filter_dimensions': len(window.scope_controls), 'filter_selection': 'ok', 'filter_location': 'Dashboard',
                     'credentials_present': bool(window.settings['webhook'] or window.settings['api_key'])})
                 window.exit_app()
                 return 0

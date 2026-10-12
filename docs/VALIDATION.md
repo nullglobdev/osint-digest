@@ -2,6 +2,14 @@
 
 Earlier validation dates and release-specific results are retained below.
 
+## Desktop 1.8.1: Dashboard filters
+
+Validated on October 11, 2026:
+
+- Moved all seven article filters, active-scope count, keyword help, and reset action to the Dashboard. Removed the separate Filters tab. Wider windows place filters beside the collection controls; smaller windows and larger text stack the cards vertically.
+- Windows suite: 176 tests collected, 175 passed, one POSIX-only permissions test skipped. Checks cover Dashboard ownership of every filter, unchanged saved selections and Results/Previews filtering, Ctrl+7 focus on the Dashboard, Tab/arrow navigation, and focus visibility at 200% text in a 640×480 window.
+- Reviewed dark/light Dashboard renders at 1040×740 and the enlarged-text layout. Collection, automatic checks, filters, and Activity remain accessible. The packaged startup check also verifies that all filters belong to the Dashboard. Collection and server filtering behavior are unchanged.
+
 
 ## Desktop 1.8.0 and server 1.6.0: independent article scopes
 

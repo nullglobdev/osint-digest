@@ -6,7 +6,7 @@ Download the Windows installer or portable ZIP from [GitHub Releases](https://gi
 
 **Server container:** run continuously without a GUI using Docker Compose, with interactive terminal setup/settings, multiple named Discord webhooks, provider model discovery, custom sources, delivery history and retries for each webhook, and checks every 15–360 minutes. The server uses the same per-source article limit and 48-hour publication window as Windows. No Python installation or exposed ports are needed on the host. See [CONTAINER.md](docs/CONTAINER.md).
 
-**Article filters:** the Windows **Filters** tab and server filter menu offer seven independent scopes: Sector, Threat actor, Social engineering, Access & exploitation, Malware & impact, Other styles, and Education combinations. Each defaults to **All**. Every active scope must match before AI analysis or publishing; aliases within an option are alternatives. See [SCOPES.md](docs/SCOPES.md) for the complete catalog and CLI flags. Windows Results opens article, CVE, and ATT&CK links in your default browser.
+**Article filters:** the Windows **Dashboard** and server filter menu offer seven independent scopes: Sector, Threat actor, Social engineering, Access & exploitation, Malware & impact, Other styles, and Education combinations. Each defaults to **All**. Every active scope must match before AI analysis or publishing; aliases within an option are alternatives. See [SCOPES.md](docs/SCOPES.md) for the complete catalog and CLI flags. Windows Results opens article, CVE, and ATT&CK links in your default browser.
 
 | Deployment | Setup and management | Runs while |
 |---|---|---|
