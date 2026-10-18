@@ -26,6 +26,63 @@ The desktop and server editions check every enabled source, select articles publ
 
 Use the named download assets above for installation. GitHub's automatically generated **Source code** archives do not contain a ready-to-run Windows app. The Windows installer is currently unsigned.
 
+## Adjust an installed Docker server
+
+SSH to your Docker host and enter the existing checkout. On Ryan's current Docker VM:
+
+```sh
+ssh ry@192.168.6.238
+cd /home/ry/osint-digest
+sh scripts/server.sh settings
+```
+
+Use the interactive menu to change the schedule, articles per source, AI provider/model, sources, filters, or Discord destinations, and save the change. For a focused menu:
+
+```sh
+sh scripts/server.sh sources
+sh scripts/server.sh models
+sh scripts/server.sh webhooks
+sh scripts/server.sh filters
+```
+
+`scope` remains an alias for `filters`. Enter webhook URLs and API keys only in the hidden-input prompts; do not paste them into shell commands, screenshots, Git, or issue reports. The server does not use the standalone CLI's repository `.env` file. Do not rerun `setup` to make routine adjustments.
+
+**Saved settings reload automatically; no restart or image rebuild is required.** While idle, changes are noticed within a few seconds. A collection already in progress keeps its original settings until it finishes. Pause automatic checks in Settings before making a series of changes if you do not want another collection to start meanwhile; enable them again when ready.
+
+```sh
+sh scripts/server.sh status
+sh scripts/server.sh logs
+```
+
+Status hides saved credentials. Ctrl+C exits log viewing without stopping the service. Review logs locally and redact sensitive details before sharing. Closing SSH leaves the background container running.
+
+Settings, credentials and delivery history persist in the named Docker volume `osint-digest_digest-data`, mounted at `/data`; keep the Compose project name unchanged. Rebuilding the application does not replace this volume. Never use `docker compose down -v` when preserving your configuration or history.
+
+Before a software upgrade, pause automatic checks and wait for any active collection to finish, then create a consistent backup:
+
+```sh
+sh scripts/server.sh backup
+```
+
+The command prints the archive path under `/data/backups/`. Copy that specific archive to a private backup location outside the repository (replace the filename and destination):
+
+```sh
+docker compose cp digest:/data/backups/ARCHIVE-NAME.tar.gz /private/backup/ARCHIVE-NAME.tar.gz
+```
+
+Backups contain credentials, history and previews. Restrict access and do not commit them. A backup left in the same Docker volume does not protect against losing that volume.
+
+Only when you intend to upgrade the running application, review the intended revision and release notes, check `git status --short`, preserve any local edits, and then use:
+
+```sh
+sh scripts/server.sh stop
+git pull --ff-only
+sh scripts/server.sh update
+sh scripts/server.sh status
+```
+
+If the checkout is dirty or `git pull --ff-only` fails, stop and reconcile the source without resetting local work. `update` rebuilds from the checked-out source, refreshes the base image, and recreates the service; it is not needed for settings changes. Re-enable automatic checks in Settings if you paused them for maintenance. For a server installed from a release archive, use the reviewed replacement server bundle instead of `git pull`. See the [server guide](docs/CONTAINER.md#data-logs-and-backups) for backup and restore details.
+
 ## Windows installer
 
 1. Download the `.exe` installer above.
