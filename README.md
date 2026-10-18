@@ -28,11 +28,11 @@ Use the named download assets above for installation. GitHub's automatically gen
 
 ## Adjust an installed Docker server
 
-SSH to your Docker host and enter the existing checkout. On Ryan's current Docker VM:
+SSH to your Docker host and enter your existing checkout (replace these placeholders):
 
 ```sh
-ssh ry@192.168.6.238
-cd /home/ry/osint-digest
+ssh USER@DOCKER_HOST
+cd /path/to/osint-digest
 sh scripts/server.sh settings
 ```
 
@@ -254,6 +254,8 @@ Reports include the publisher, original article link, publication time, a summar
 Release downloads contain no configured API keys or webhooks. `.env` and local runtime data are excluded from Git. Each deployment keeps its own delivery history; running separate deployments against the same channel can produce duplicate posts.
 
 ## Documentation and development
+
+Start with the [OSINT Digest wiki](docs/wiki/README.md) for linked guides to the pipeline, sources, models, filters, scheduling, Discord delivery, settings, maintenance, and troubleshooting.
 
 - [Desktop guide](docs/DESKTOP.md): providers, models, tray behavior, accessibility, and Windows package builds.
 - [Server guide](docs/CONTAINER.md): setup, operation, backups, test mode, and multiple webhooks.
