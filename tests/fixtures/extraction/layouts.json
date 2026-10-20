@@ -1,0 +1,398 @@
+[
+  {
+    "publisher": "Microsoft",
+    "file": "microsoft.html",
+    "scope": "content container",
+    "include": [
+      "Fixture Microsoft",
+      "203[.]0[.]113[.]8",
+      "hxxps://payload[.]example/download",
+      "Entity & inline content.",
+      "Split\nlines"
+    ],
+    "exclude": [
+      "nav-noise",
+      "footer-noise",
+      "script-noise",
+      "style-noise",
+      "template-noise",
+      "aside-noise",
+      "href-only",
+      "Recommendation noise"
+    ],
+    "expected_iocs": [
+      [
+        "ipv4",
+        "203.0.113.8"
+      ],
+      [
+        "url",
+        "https://payload.example/download"
+      ],
+      [
+        "domain",
+        "payload.example"
+      ]
+    ]
+  },
+  {
+    "publisher": "Google",
+    "file": "google.html",
+    "scope": "article",
+    "include": [
+      "Fixture Google",
+      "203[.]0[.]113[.]8",
+      "hxxps://payload[.]example/download",
+      "Entity & inline content.",
+      "Split\nlines"
+    ],
+    "exclude": [
+      "nav-noise",
+      "footer-noise",
+      "script-noise",
+      "style-noise",
+      "template-noise",
+      "aside-noise",
+      "href-only",
+      "Recommendation noise"
+    ],
+    "expected_iocs": [
+      [
+        "ipv4",
+        "203.0.113.8"
+      ],
+      [
+        "url",
+        "https://payload.example/download"
+      ],
+      [
+        "domain",
+        "payload.example"
+      ]
+    ]
+  },
+  {
+    "publisher": "Huntress",
+    "file": "huntress.html",
+    "scope": "content container",
+    "include": [
+      "Fixture Huntress",
+      "203[.]0[.]113[.]8",
+      "hxxps://payload[.]example/download",
+      "Entity & inline content.",
+      "Split\nlines"
+    ],
+    "exclude": [
+      "nav-noise",
+      "footer-noise",
+      "script-noise",
+      "style-noise",
+      "template-noise",
+      "aside-noise",
+      "href-only",
+      "Recommendation noise"
+    ],
+    "expected_iocs": [
+      [
+        "ipv4",
+        "203.0.113.8"
+      ],
+      [
+        "url",
+        "https://payload.example/download"
+      ],
+      [
+        "domain",
+        "payload.example"
+      ]
+    ]
+  },
+  {
+    "publisher": "Proofpoint",
+    "file": "proofpoint.html",
+    "scope": "main",
+    "include": [
+      "Fixture Proofpoint",
+      "203[.]0[.]113[.]8",
+      "hxxps://payload[.]example/download",
+      "Entity & inline content.",
+      "Split\nlines"
+    ],
+    "exclude": [
+      "nav-noise",
+      "footer-noise",
+      "script-noise",
+      "style-noise",
+      "template-noise",
+      "aside-noise",
+      "href-only",
+      "Recommendation noise"
+    ],
+    "expected_iocs": [
+      [
+        "ipv4",
+        "203.0.113.8"
+      ],
+      [
+        "url",
+        "https://payload.example/download"
+      ],
+      [
+        "domain",
+        "payload.example"
+      ]
+    ]
+  },
+  {
+    "publisher": "SOCRadar",
+    "file": "socradar.html",
+    "scope": "content container",
+    "include": [
+      "Fixture SOCRadar",
+      "203[.]0[.]113[.]8",
+      "hxxps://payload[.]example/download",
+      "Entity & inline content.",
+      "Split\nlines"
+    ],
+    "exclude": [
+      "nav-noise",
+      "footer-noise",
+      "script-noise",
+      "style-noise",
+      "template-noise",
+      "aside-noise",
+      "href-only",
+      "Recommendation noise"
+    ],
+    "expected_iocs": [
+      [
+        "ipv4",
+        "203.0.113.8"
+      ],
+      [
+        "url",
+        "https://payload.example/download"
+      ],
+      [
+        "domain",
+        "payload.example"
+      ]
+    ]
+  },
+  {
+    "publisher": "Talos",
+    "file": "talos.html",
+    "scope": "content container",
+    "include": [
+      "Fixture Talos",
+      "203[.]0[.]113[.]8",
+      "hxxps://payload[.]example/download",
+      "Entity & inline content.",
+      "Split\nlines"
+    ],
+    "exclude": [
+      "nav-noise",
+      "footer-noise",
+      "script-noise",
+      "style-noise",
+      "template-noise",
+      "aside-noise",
+      "href-only",
+      "Recommendation noise"
+    ],
+    "expected_iocs": [
+      [
+        "ipv4",
+        "203.0.113.8"
+      ],
+      [
+        "url",
+        "https://payload.example/download"
+      ],
+      [
+        "domain",
+        "payload.example"
+      ]
+    ]
+  },
+  {
+    "publisher": "Unit42",
+    "file": "unit42.html",
+    "scope": "content container",
+    "include": [
+      "Fixture Unit42",
+      "203[.]0[.]113[.]8",
+      "hxxps://payload[.]example/download",
+      "Entity & inline content.",
+      "Split\nlines"
+    ],
+    "exclude": [
+      "nav-noise",
+      "footer-noise",
+      "script-noise",
+      "style-noise",
+      "template-noise",
+      "aside-noise",
+      "href-only",
+      "Recommendation noise"
+    ],
+    "expected_iocs": [
+      [
+        "ipv4",
+        "203.0.113.8"
+      ],
+      [
+        "url",
+        "https://payload.example/download"
+      ],
+      [
+        "domain",
+        "payload.example"
+      ]
+    ]
+  },
+  {
+    "publisher": "ESET",
+    "file": "eset.html",
+    "scope": "content container",
+    "include": [
+      "Fixture ESET",
+      "203[.]0[.]113[.]8",
+      "hxxps://payload[.]example/download",
+      "Entity & inline content.",
+      "Split\nlines"
+    ],
+    "exclude": [
+      "nav-noise",
+      "footer-noise",
+      "script-noise",
+      "style-noise",
+      "template-noise",
+      "aside-noise",
+      "href-only",
+      "Recommendation noise"
+    ],
+    "expected_iocs": [
+      [
+        "ipv4",
+        "203.0.113.8"
+      ],
+      [
+        "url",
+        "https://payload.example/download"
+      ],
+      [
+        "domain",
+        "payload.example"
+      ]
+    ]
+  },
+  {
+    "publisher": "SentinelLabs",
+    "file": "sentinellabs.html",
+    "scope": "content container",
+    "include": [
+      "Fixture SentinelLabs",
+      "203[.]0[.]113[.]8",
+      "hxxps://payload[.]example/download",
+      "Entity & inline content.",
+      "Split\nlines"
+    ],
+    "exclude": [
+      "nav-noise",
+      "footer-noise",
+      "script-noise",
+      "style-noise",
+      "template-noise",
+      "aside-noise",
+      "href-only",
+      "Recommendation noise"
+    ],
+    "expected_iocs": [
+      [
+        "ipv4",
+        "203.0.113.8"
+      ],
+      [
+        "url",
+        "https://payload.example/download"
+      ],
+      [
+        "domain",
+        "payload.example"
+      ]
+    ]
+  },
+  {
+    "publisher": "Securelist",
+    "file": "securelist.html",
+    "scope": "content container",
+    "include": [
+      "Fixture Securelist",
+      "203[.]0[.]113[.]8",
+      "hxxps://payload[.]example/download",
+      "Entity & inline content.",
+      "Split\nlines"
+    ],
+    "exclude": [
+      "nav-noise",
+      "footer-noise",
+      "script-noise",
+      "style-noise",
+      "template-noise",
+      "aside-noise",
+      "href-only",
+      "Recommendation noise"
+    ],
+    "expected_iocs": [
+      [
+        "ipv4",
+        "203.0.113.8"
+      ],
+      [
+        "url",
+        "https://payload.example/download"
+      ],
+      [
+        "domain",
+        "payload.example"
+      ]
+    ]
+  },
+  {
+    "publisher": "CISA",
+    "file": "cisa.html",
+    "scope": "body",
+    "include": [
+      "Fixture CISA",
+      "203[.]0[.]113[.]8",
+      "hxxps://payload[.]example/download",
+      "Entity & inline content.",
+      "Split\nlines"
+    ],
+    "exclude": [
+      "nav-noise",
+      "footer-noise",
+      "script-noise",
+      "style-noise",
+      "template-noise",
+      "aside-noise",
+      "href-only",
+      "Recommendation noise"
+    ],
+    "expected_iocs": [
+      [
+        "ipv4",
+        "203.0.113.8"
+      ],
+      [
+        "url",
+        "https://payload.example/download"
+      ],
+      [
+        "domain",
+        "payload.example"
+      ]
+    ]
+  }
+]

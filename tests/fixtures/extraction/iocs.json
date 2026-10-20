@@ -1,0 +1,208 @@
+{
+  "version": 1,
+  "provenance": "Hand-authored synthetic cases; not captured articles.",
+  "cases": [
+    {
+      "id": "hashes",
+      "text": "SHA256 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA SHA1 BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB MD5 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+      "expected": [
+        [
+          "sha256",
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ],
+        [
+          "sha1",
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ],
+        [
+          "md5",
+          "cccccccccccccccccccccccccccccccc"
+        ]
+      ],
+      "label_rationale": "Exact hex lengths; normalized to lowercase."
+    },
+    {
+      "id": "invalid-hashes",
+      "text": "gaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "expected": [],
+      "label_rationale": "Nonhex boundary and wrong lengths are not whole hashes."
+    },
+    {
+      "id": "ipv4",
+      "text": "203.0.113.8; 198[.]51[.]100[.]20 192(.)0(.)2(.)1",
+      "expected": [
+        [
+          "ipv4",
+          "203.0.113.8"
+        ],
+        [
+          "ipv4",
+          "198.51.100.20"
+        ],
+        [
+          "ipv4",
+          "192.0.2.1"
+        ]
+      ],
+      "label_rationale": "Valid documentation IPv4 addresses, including supported defanging."
+    },
+    {
+      "id": "ipv4-sentence",
+      "text": "The address was 203.0.113.9.",
+      "expected": [
+        [
+          "ipv4",
+          "203.0.113.9"
+        ]
+      ],
+      "label_rationale": "Sentence punctuation is not part of the address."
+    },
+    {
+      "id": "invalid-ipv4",
+      "text": "999.2.3.4 256.0.0.1 1.2.3.4.5 x203.0.113.8 01.2.3.4",
+      "expected": [],
+      "label_rationale": "Invalid octets, extra component, word boundary, leading zero."
+    },
+    {
+      "id": "ipv6",
+      "text": "2001:0DB8:0000:0000:0000:0000:0000:0001; ::1; [2001:db8::2]",
+      "expected": [
+        [
+          "ipv6",
+          "2001:db8::1"
+        ],
+        [
+          "ipv6",
+          "::1"
+        ],
+        [
+          "ipv6",
+          "2001:db8::2"
+        ]
+      ],
+      "label_rationale": "Canonical compressed lowercase addresses."
+    },
+    {
+      "id": "invalid-ipv6",
+      "text": "2001:db8:::1 12345::1",
+      "expected": [],
+      "label_rationale": "Invalid colon sequence or oversized group."
+    },
+    {
+      "id": "urls",
+      "text": "hxxps[:]//payload[.]example/a?x=1&y=2; http://other.example/path",
+      "expected": [
+        [
+          "url",
+          "https://payload.example/a?x=1&y=2"
+        ],
+        [
+          "url",
+          "http://other.example/path"
+        ],
+        [
+          "domain",
+          "payload.example"
+        ],
+        [
+          "domain",
+          "other.example"
+        ]
+      ],
+      "label_rationale": "Host domains are separately labeled candidates by current contract."
+    },
+    {
+      "id": "url-parentheses",
+      "text": "Download (https://payload.example/file_(x)).",
+      "expected": [
+        [
+          "url",
+          "https://payload.example/file_(x)"
+        ],
+        [
+          "domain",
+          "payload.example"
+        ]
+      ],
+      "label_rationale": "Preserve balanced path parentheses, strip prose wrapper."
+    },
+    {
+      "id": "email",
+      "text": "User[@]mail[.]example user@mail.example",
+      "expected": [
+        [
+          "email",
+          "user@mail.example"
+        ]
+      ],
+      "label_rationale": "Deduplicate case-insensitive email; do not infer maliciousness."
+    },
+    {
+      "id": "domains",
+      "text": "C2 alpha[.]example beta(.)example ALPHA.example",
+      "expected": [
+        [
+          "domain",
+          "alpha.example"
+        ],
+        [
+          "domain",
+          "beta.example"
+        ]
+      ],
+      "label_rationale": "Supported defanging and case folding."
+    },
+    {
+      "id": "file-and-id-negatives",
+      "text": "setup.exe library.dll script.ps1 archive.zip config.json notes.txt CVE-2026-12345 T1059.001",
+      "expected": [],
+      "label_rationale": "Known file suffix exclusions; vulnerability/technique IDs are not IOCs."
+    },
+    {
+      "id": "benign-reference",
+      "text": "Documentation is at https://docs.example/help and support@example.org.",
+      "expected": [
+        [
+          "url",
+          "https://docs.example/help"
+        ],
+        [
+          "domain",
+          "docs.example"
+        ],
+        [
+          "email",
+          "support@example.org"
+        ]
+      ],
+      "label_rationale": "Benign but syntactically valid candidates count positive; this is not a malicious IOC benchmark."
+    },
+    {
+      "id": "duplicates",
+      "text": "203.0.113.8 203[.]0[.]113[.]8 alpha.example ALPHA[.]example",
+      "expected": [
+        [
+          "ipv4",
+          "203.0.113.8"
+        ],
+        [
+          "domain",
+          "alpha.example"
+        ]
+      ],
+      "label_rationale": "Each pair is scored once per case."
+    },
+    {
+      "id": "empty",
+      "text": "",
+      "expected": [],
+      "label_rationale": "Empty input produces no candidates."
+    },
+    {
+      "id": "plain-prose",
+      "text": "This report has no indicators and no network references.",
+      "expected": [],
+      "label_rationale": "Negative prose control."
+    }
+  ]
+}

@@ -1,0 +1,295 @@
+{
+  "corpus_version": 1,
+  "case_count": 16,
+  "micro": {
+    "tp": 22,
+    "fp": 1,
+    "fn": 2,
+    "precision": 0.9565217391304348,
+    "recall": 0.9166666666666666
+  },
+  "by_type": {
+    "sha256": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "sha1": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "md5": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "ipv4": {
+      "tp": 4,
+      "fp": 0,
+      "fn": 1,
+      "precision": 1.0,
+      "recall": 0.8
+    },
+    "ipv6": {
+      "tp": 3,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "url": {
+      "tp": 3,
+      "fp": 1,
+      "fn": 1,
+      "precision": 0.75,
+      "recall": 0.75
+    },
+    "domain": {
+      "tp": 7,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "email": {
+      "tp": 2,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    }
+  },
+  "cases": [
+    {
+      "id": "hashes",
+      "capped": false,
+      "tp": [
+        [
+          "md5",
+          "cccccccccccccccccccccccccccccccc"
+        ],
+        [
+          "sha1",
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ],
+        [
+          "sha256",
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ]
+      ],
+      "fp": [],
+      "fn": []
+    },
+    {
+      "id": "invalid-hashes",
+      "capped": false,
+      "tp": [],
+      "fp": [],
+      "fn": []
+    },
+    {
+      "id": "ipv4",
+      "capped": false,
+      "tp": [
+        [
+          "ipv4",
+          "192.0.2.1"
+        ],
+        [
+          "ipv4",
+          "198.51.100.20"
+        ],
+        [
+          "ipv4",
+          "203.0.113.8"
+        ]
+      ],
+      "fp": [],
+      "fn": []
+    },
+    {
+      "id": "ipv4-sentence",
+      "capped": false,
+      "tp": [],
+      "fp": [],
+      "fn": [
+        [
+          "ipv4",
+          "203.0.113.9"
+        ]
+      ]
+    },
+    {
+      "id": "invalid-ipv4",
+      "capped": false,
+      "tp": [],
+      "fp": [],
+      "fn": []
+    },
+    {
+      "id": "ipv6",
+      "capped": false,
+      "tp": [
+        [
+          "ipv6",
+          "2001:db8::1"
+        ],
+        [
+          "ipv6",
+          "2001:db8::2"
+        ],
+        [
+          "ipv6",
+          "::1"
+        ]
+      ],
+      "fp": [],
+      "fn": []
+    },
+    {
+      "id": "invalid-ipv6",
+      "capped": false,
+      "tp": [],
+      "fp": [],
+      "fn": []
+    },
+    {
+      "id": "urls",
+      "capped": false,
+      "tp": [
+        [
+          "domain",
+          "other.example"
+        ],
+        [
+          "domain",
+          "payload.example"
+        ],
+        [
+          "url",
+          "http://other.example/path"
+        ],
+        [
+          "url",
+          "https://payload.example/a?x=1&y=2"
+        ]
+      ],
+      "fp": [],
+      "fn": []
+    },
+    {
+      "id": "url-parentheses",
+      "capped": false,
+      "tp": [
+        [
+          "domain",
+          "payload.example"
+        ]
+      ],
+      "fp": [
+        [
+          "url",
+          "https://payload.example/file_(x"
+        ]
+      ],
+      "fn": [
+        [
+          "url",
+          "https://payload.example/file_(x)"
+        ]
+      ]
+    },
+    {
+      "id": "email",
+      "capped": false,
+      "tp": [
+        [
+          "email",
+          "user@mail.example"
+        ]
+      ],
+      "fp": [],
+      "fn": []
+    },
+    {
+      "id": "domains",
+      "capped": false,
+      "tp": [
+        [
+          "domain",
+          "alpha.example"
+        ],
+        [
+          "domain",
+          "beta.example"
+        ]
+      ],
+      "fp": [],
+      "fn": []
+    },
+    {
+      "id": "file-and-id-negatives",
+      "capped": false,
+      "tp": [],
+      "fp": [],
+      "fn": []
+    },
+    {
+      "id": "benign-reference",
+      "capped": false,
+      "tp": [
+        [
+          "domain",
+          "docs.example"
+        ],
+        [
+          "email",
+          "support@example.org"
+        ],
+        [
+          "url",
+          "https://docs.example/help"
+        ]
+      ],
+      "fp": [],
+      "fn": []
+    },
+    {
+      "id": "duplicates",
+      "capped": false,
+      "tp": [
+        [
+          "domain",
+          "alpha.example"
+        ],
+        [
+          "ipv4",
+          "203.0.113.8"
+        ]
+      ],
+      "fp": [],
+      "fn": []
+    },
+    {
+      "id": "empty",
+      "capped": false,
+      "tp": [],
+      "fp": [],
+      "fn": []
+    },
+    {
+      "id": "plain-prose",
+      "capped": false,
+      "tp": [],
+      "fp": [],
+      "fn": []
+    }
+  ]
+}

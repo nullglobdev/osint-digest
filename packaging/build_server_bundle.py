@@ -16,7 +16,17 @@ FILES = ('Dockerfile', '.dockerignore', 'compose.yaml', 'bot.py', 'server.py',
          'config/sources.json', 'docs/CONTAINER.md', 'docs/SCOPES.md', 'docs/VALIDATION.md',
          'scripts/server.sh', 'scripts/test_container.py', 'tests/__init__.py',
          'tests/test_bot.py', 'tests/test_server.py', 'tests/test_webhooks.py', 'tests/test_collection_window.py',
-         'tests/test_sectors.py', 'tests/test_scopes.py')
+         'tests/test_sectors.py', 'tests/test_scopes.py',
+         'tests/test_extraction.py', 'tests/benchmark_iocs.py',
+         'tests/fixtures/extraction/README.md',
+         'tests/fixtures/extraction/layouts.json', 'tests/fixtures/extraction/iocs.json',
+         'tests/fixtures/extraction/microsoft.html', 'tests/fixtures/extraction/google.html',
+         'tests/fixtures/extraction/huntress.html', 'tests/fixtures/extraction/proofpoint.html',
+         'tests/fixtures/extraction/socradar.html', 'tests/fixtures/extraction/talos.html',
+         'tests/fixtures/extraction/unit42.html', 'tests/fixtures/extraction/eset.html',
+         'tests/fixtures/extraction/sentinellabs.html', 'tests/fixtures/extraction/securelist.html',
+         'tests/fixtures/extraction/cisa.html',
+         'docs/validation/ioc-benchmark-baseline.json', 'docs/validation/ioc-benchmark.json')
 
 
 def main():

@@ -131,7 +131,7 @@ class ArticleParser(HTMLParser):
     def handle_starttag(self, tag, attrs):
         if tag not in ('br', 'hr', 'img', 'input', 'meta', 'link', 'source', 'wbr', 'area', 'embed', 'param', 'col', 'base'):
             self.stack.append(tag)
-        classes = set(dict(attrs).get('class', '').split())
+        classes = set((dict(attrs).get('class') or '').split())
         if tag in ('div', 'section', 'article') and classes & {
                 'entry-content', 'wp-block-post-content', 'post-content',
                 'article-body', 'article__body', 'blog-post__body', 'blog-post-content'}:
@@ -151,7 +151,7 @@ class ArticleParser(HTMLParser):
             self.handle_data('\n')
 
     def handle_data(self, data):
-        if set(self.stack) & {'script', 'style', 'nav', 'footer', 'header', 'noscript', 'svg', 'form', 'head'}:
+        if set(self.stack) & {'script', 'style', 'nav', 'footer', 'header', 'noscript', 'svg', 'form', 'head', 'template', 'aside'}:
             return
         self.parts['body'].append(data)
         for block in self.content_blocks:
@@ -274,7 +274,7 @@ def extract_iocs(text):
         'sha256': r'\b[a-fA-F0-9]{64}\b',
         'sha1': r'\b[a-fA-F0-9]{40}\b',
         'md5': r'\b[a-fA-F0-9]{32}\b',
-        'ipv4': r'(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?![\w.])',
+        'ipv4': r'(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?!\w|\.\w)',
         'ipv6': r'(?<![\w:])(?:[A-Fa-f0-9]{0,4}:){2,}[A-Fa-f0-9]{0,4}(?![\w:])',
         'url': r'(?i)https?://[^\s<>"\x27|]+',
         'email': r'(?i)\b[\w.+-]+@(?:[a-z0-9-]+\.)+[a-z]{2,63}\b',
@@ -282,7 +282,16 @@ def extract_iocs(text):
     }
     for kind, pattern in patterns.items():
         for m in re.finditer(pattern, normalized):
-            value = m[0].rstrip('.,;)]}')
+            value = m[0].rstrip('.,;')
+            if kind == 'url':
+                # Prose wrappers are punctuation, but balanced URL path delimiters
+                # (and bracketed IPv6 hosts) must remain intact.
+                pairs = {')': '(', ']': '[', '}': '{'}
+                while value and value[-1] in pairs:
+                    closing = value[-1]
+                    if value.count(closing) <= value.count(pairs[closing]):
+                        break
+                    value = value[:-1].rstrip('.,;')
             if kind in ('ipv4', 'ipv6'):
                 try:
                     value = str(ipaddress.ip_address(value))

@@ -2,6 +2,55 @@
 
 Earlier validation dates and release-specific results are retained below.
 
+## Offline extraction regression benchmark (October 20, 2026)
+
+Based on local commit `b928dbe1acd5b3f3fe1b12303c5ca6ccfcb113f4`.
+Review confirmed the earlier gap: only Microsoft and Huntress had recorded live
+body sampling, and there was no labeled IOC precision/recall corpus.
+
+- Added 11 **synthetic**, offline HTML fixtures spanning all configured source
+  names (10 enabled plus disabled CISA). They exercise seven recognized content
+  classes and article/main/body fallback selection, tables/code, entities, inline
+  text, line breaks, ignored hrefs, and excluded surrounding content. The source
+  names are a test matrix, not evidence of current publisher markup. These are
+  not real publisher captures and do not expand the live sampling claim.
+- Added 16 labeled text cases with 24 expected candidate pairs across all eight
+  extractor types. Exact `(type, normalized value)` micro scoring on the same
+  corpus: baseline **22 TP / 1 FP / 2 FN**, precision **95.65%**, recall **91.67%**;
+  after fixes **24 TP / 0 FP / 0 FN**, precision **100%**, recall **100%**.
+  [Baseline report](validation/ioc-benchmark-baseline.json) and
+  [current report](validation/ioc-benchmark.json) include per-type counts and
+  per-case matches/mismatches. HTML assertions are measured separately.
+- Fixed template/sidebar text leaking into article bodies, sentence-final IPv4
+  omission, stripping of balanced URL path delimiters, and a crash on a valueless
+  HTML class attribute. All 11 layout cases and 16 candidate cases now pass.
+  A separate test checks deterministic deduplication and the 2,000-candidate cap.
+- Windows Python 3.12.10 with pinned PySide6/Shiboken 6.12.0: **180 tests run,
+  179 passed, one POSIX-only permission check skipped**, with Qt offscreen.
+  Python socket connect/connect_ex were blocked during the suite; AI and delivery
+  transports use existing mocks. New extraction tests also prohibit sockets.
+  Compilation and `git diff --check` passed.
+- Updated the server bundle's explicit file allowlist to include the fixtures,
+  scorer, tests, and reports. Built and extracted the local bundle; **123 tests
+  run, 122 passed, one POSIX-only permission check skipped** on Windows with the
+  same socket guard. No publication, deployment, live AI, or external messages.
+- Docker acceptance was not run: the local Docker Linux engine named pipe is
+  absent. Linux permissions and packaged Windows executable validation were not
+  performed for this change. Initial default-environment testing encountered
+  sandbox temporary-directory permissions and missing Qt; final runs used a
+  workspace temporary directory and an isolated pinned dependency environment.
+
+Reproduce the focused tests and metrics using `python -m unittest
+tests.test_extraction -v` and `python -m tests.benchmark_iocs` from the repository
+or extracted bundle root. See the
+[fixture contract and limitations](../tests/fixtures/extraction/README.md).
+This small, hand-authored development corpus was used to guide the fixes; it is
+not held out, independently annotated, or representative of live publisher
+articles. Benign syntactic references count as candidates, so these scores do
+**not** measure malicious IOC detection. Real captures, layout drift, additional
+address/URL syntax, and semantic labeling remain unmeasured. Ignoring `aside`
+can omit substantive article sidebars. The earlier live coverage gap remains.
+
 ## Desktop 1.8.1: Dashboard filters
 
 Validated on October 11, 2026:
@@ -150,7 +199,7 @@ The records below describe earlier collector and 1.0 packaging validation.
 - Google’s feed was accessible, but its sampled article returned a short “Site Unavailable” page in this environment. Article processing rejected it and retained it for retry. Deployment from another host may differ.
 - CISA’s feed returned HTTP 403 and remains disabled in `config/sources.json`.
 - Gemini has now been tested with user credentials as described above; other model adapters, Windows Task Scheduler and GitHub Actions execution remain untested here. Discord transport is covered by mocked tests; this AI test did not exercise live delivery.
-- Live article body extraction was sampled for Microsoft and Huntress, not validated across every publisher/layout. There is no measured IOC precision/recall benchmark.
+- Live article body extraction was sampled for Microsoft and Huntress, not validated across every publisher/layout. The October 20 synthetic candidate benchmark above adds measured offline regression coverage, not real-world malicious IOC precision/recall.
 - AI evidence matching checks source substring presence, not logical entailment. Summaries require review.
 - The generic extractor does not cover images, PDFs or linked IOC files. See README for other coverage and delivery limitations.
 
